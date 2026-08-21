@@ -66,6 +66,15 @@ export function createProjectEnvironmentAtoms<R, E>(
       staleTimeMs: 30_000,
       idleTtlMs: 5 * 60_000,
     }),
+    // One directory at a time, keyed by the directory it reads. The file tree
+    // holds a query per expanded directory, so these stay resident far longer
+    // than a single view and expire on their own idle timer.
+    listDirectory: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:projects:list-directory",
+      tag: WS_METHODS.projectsListDirectory,
+      staleTimeMs: 30_000,
+      idleTtlMs: 5 * 60_000,
+    }),
     readFile: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:projects:read-file",
       tag: WS_METHODS.projectsReadFile,
