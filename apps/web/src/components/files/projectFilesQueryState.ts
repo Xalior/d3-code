@@ -1,6 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
+  ProjectListDirectoryResult,
   ProjectListEntriesResult,
   ProjectReadFileResult,
 } from "@t3tools/contracts";
@@ -31,6 +32,36 @@ interface ProjectQueryState<A> {
 
 export function getProjectEntriesQueryAtom(environmentId: EnvironmentId, cwd: string) {
   return projectEnvironment.listEntries({ environmentId, input: { cwd } });
+}
+
+/** The workspace root is addressed by an empty relative path. */
+const PROJECT_ROOT_DIRECTORY_PATH = "";
+
+export function getProjectDirectoryQueryAtom(
+  environmentId: EnvironmentId,
+  cwd: string,
+  relativePath: string,
+) {
+  return projectEnvironment.listDirectory({ environmentId, input: { cwd, relativePath } });
+}
+
+/**
+ * Reads one directory outside React's render cycle. The file tree expands on
+ * user input rather than on a rendered path list, so the directories it needs
+ * are not knowable from hook order; this drives the same query atom family
+ * imperatively instead.
+ */
+export async function loadProjectDirectory(
+  environmentId: EnvironmentId,
+  cwd: string,
+  relativePath: string,
+): Promise<ProjectListDirectoryResult | null> {
+  const result = await executeAtomQuery(
+    appAtomRegistry,
+    getProjectDirectoryQueryAtom(environmentId, cwd, relativePath),
+    { reportDefect: false, reportFailure: false },
+  );
+  return result._tag === "Success" ? result.value : null;
 }
 
 export function getProjectFileQueryAtom(
@@ -126,6 +157,29 @@ export function useProjectEntriesQuery(
   cwd: string,
 ): ProjectQueryState<ProjectListEntriesResult> {
   const atom = getProjectEntriesQueryAtom(environmentId, cwd);
+  const result = useAtomValue(atom);
+  const refreshAtom = useAtomRefresh(atom);
+  const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
+  return {
+    data: Option.getOrNull(AsyncResult.value(result)),
+    error: errorMessage(result),
+    isPending: result.waiting,
+    refresh,
+  };
+}
+
+/**
+ * Backing query for the file tree's root level. Only the workspace root's own
+ * children are read here; everything below arrives through
+ * {@link loadProjectDirectory} as the user expands directories, so opening the
+ * panel costs one directory read no matter how large the workspace is.
+ */
+export function useProjectDirectoryQuery(
+  environmentId: EnvironmentId,
+  cwd: string,
+  relativePath: string = PROJECT_ROOT_DIRECTORY_PATH,
+): ProjectQueryState<ProjectListDirectoryResult> {
+  const atom = getProjectDirectoryQueryAtom(environmentId, cwd, relativePath);
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
   const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
