@@ -1,3 +1,23 @@
+# d3-code
+
+d3-code is a working fork of [T3 Code](https://github.com/pingdotgg/t3code). It tracks upstream features and carries the fixes and features we need on very large repositories.
+
+`main` is an unmodified mirror of upstream. `d3` carries our work and is the branch to build.
+
+## What this fork adds
+
+**Lazy file trees.** A new `projects.listDirectory` request reads a single directory, and the Files panel reads each directory as you expand it. On a workspace of about 1.1 million files a directory lists in under a millisecond, with no whole-workspace scan and no ceiling on how many files the tree can reach.
+
+**Symlinked directories open in the file tree.** A directory reached through a symbolic link is listed as a directory and can be expanded. Repositories that share one directory across sibling checkouts are built out of these links.
+
+## Fixes carried here
+
+Each fix lives on its own branch and lists the upstream tickets it covers, so when a ticket closes the fix can be dropped and the branch retired.
+
+- [t3code#4640](https://github.com/pingdotgg/t3code/issues/4640) - `fix/file-tree-large-workspaces` - Files panel reads one directory at a time through a new `projects.listDirectory` request rather than indexing the whole workspace, and opens symlinked directories. No upstream ticket covers the workspace scan timeout this also addresses.
+
+---
+
 # T3 Code
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
