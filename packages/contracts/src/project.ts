@@ -10,6 +10,7 @@ const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_SEARCH_CONTENTS_MAX_LIMIT = 500;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 const PROJECT_READ_FILE_PATH_MAX_LENGTH = 512;
+const PROJECT_LIST_DIRECTORY_PATH_MAX_LENGTH = 512;
 
 export const ProjectEntryKind = Schema.Literals(["file", "directory"]);
 export type ProjectEntryKind = typeof ProjectEntryKind.Type;
@@ -81,11 +82,34 @@ export const ProjectListEntriesResult = Schema.Struct({
 });
 export type ProjectListEntriesResult = typeof ProjectListEntriesResult.Type;
 
+/**
+ * Reads the immediate children of one workspace directory. The workspace root
+ * is addressed by an empty `relativePath`; any other value names a directory
+ * below it. Unlike {@link ProjectListEntriesInput} this never consults the
+ * whole-workspace search index, so the cost is one directory read regardless
+ * of how large the workspace is.
+ */
+export const ProjectListDirectoryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedString.check(Schema.isMaxLength(PROJECT_LIST_DIRECTORY_PATH_MAX_LENGTH)),
+});
+export type ProjectListDirectoryInput = typeof ProjectListDirectoryInput.Type;
+
+export const ProjectListDirectoryResult = Schema.Struct({
+  /** Echoes the requested directory so a caller can match a late reply to its request. */
+  relativePath: TrimmedString,
+  /** Immediate children only, as workspace-root-relative paths without a trailing separator. */
+  entries: Schema.Array(ProjectEntry),
+});
+export type ProjectListDirectoryResult = typeof ProjectListDirectoryResult.Type;
+
 export const ProjectEntriesFailure = Schema.Literals([
   "workspace_root_not_found",
   "workspace_root_create_failed",
   "workspace_root_stat_failed",
   "workspace_root_not_directory",
+  "workspace_path_outside_root",
+  "read_directory_failed",
   "search_index_create_failed",
   "search_index_scan_timed_out",
   "search_index_search_failed",
@@ -187,6 +211,35 @@ export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectList
       ...props,
       message:
         decodedProjectErrorMessage(props) ?? `Failed to list workspace entries in '${props.cwd}'.`,
+    } as any);
+  }
+}
+
+export class ProjectListDirectoryError extends Schema.TaggedErrorClass<ProjectListDirectoryError>()(
+  "ProjectListDirectoryError",
+  {
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    relativePath: Schema.optional(TrimmedString),
+    failure: Schema.optional(ProjectEntriesFailure),
+    normalizedCwd: Schema.optional(TrimmedNonEmptyString),
+    timeout: Schema.optional(TrimmedNonEmptyString),
+    detail: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(
+    props: ProjectEntriesFailureContext & {
+      readonly cwd: string;
+      readonly relativePath: string;
+    },
+  ) {
+    super({
+      ...props,
+      message:
+        decodedProjectErrorMessage(props) ??
+        `Failed to list workspace directory '${props.relativePath}' in '${props.cwd}'.`,
     } as any);
   }
 }

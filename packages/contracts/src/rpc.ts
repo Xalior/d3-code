@@ -99,6 +99,9 @@ import {
   RelayClientStatusSchema,
 } from "./relayClient.ts";
 import {
+  ProjectListDirectoryError,
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
   ProjectListEntriesError,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
@@ -199,6 +202,7 @@ export const WS_METHODS = {
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
   projectsListEntries: "projects.listEntries",
+  projectsListDirectory: "projects.listDirectory",
   projectsReadFile: "projects.readFile",
   projectsSearchContents: "projects.searchContents",
   projectsSearchEntries: "projects.searchEntries",
@@ -636,6 +640,17 @@ export const WsProjectsListEntriesRpc = Rpc.make(WS_METHODS.projectsListEntries,
   error: Schema.Union([ProjectListEntriesError, EnvironmentAuthorizationError]),
 });
 
+/**
+ * Reads one directory's immediate children. The file tree pages the workspace
+ * in with this as the user expands directories, so it stays independent of the
+ * whole-workspace index that backs `projects.listEntries`.
+ */
+export const WsProjectsListDirectoryRpc = Rpc.make(WS_METHODS.projectsListDirectory, {
+  payload: ProjectListDirectoryInput,
+  success: ProjectListDirectoryResult,
+  error: Schema.Union([ProjectListDirectoryError, EnvironmentAuthorizationError]),
+});
+
 export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
   payload: ProjectReadFileInput,
   success: ProjectReadFileResult,
@@ -1027,6 +1042,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
   WsProjectsListEntriesRpc,
+  WsProjectsListDirectoryRpc,
   WsProjectsReadFileRpc,
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
