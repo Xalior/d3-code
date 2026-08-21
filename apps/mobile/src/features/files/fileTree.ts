@@ -129,16 +129,6 @@ export function countFileNodes(nodes: ReadonlyArray<FileTreeNode>): number {
   return count;
 }
 
-export function defaultExpandedTreePaths(nodes: ReadonlyArray<FileTreeNode>): ReadonlySet<string> {
-  const expanded = new Set<string>();
-  for (const node of nodes) {
-    if (node.kind === "directory") {
-      expanded.add(node.path);
-    }
-  }
-  return expanded;
-}
-
 function valueMatchesSearchToken(value: string, token: string, fuzzy: boolean): boolean {
   return (
     scoreQueryMatch({

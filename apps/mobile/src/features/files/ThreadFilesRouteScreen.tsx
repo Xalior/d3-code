@@ -4,12 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import {
-  EnvironmentId,
-  type ProjectListEntriesResult,
-  type ProjectReadFileResult,
-  ThreadId,
-} from "@t3tools/contracts";
+import { EnvironmentId, type ProjectReadFileResult, ThreadId } from "@t3tools/contracts";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { SymbolView } from "../../components/AppSymbol";
@@ -42,6 +37,7 @@ import { FileTreeBrowser } from "./FileTreeBrowser";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
 import { SourceFileSurface } from "./SourceFileSurface";
 import { ThreadFileNavigatorPane } from "./thread-file-navigator-pane";
+import { useWorkspaceFileTree } from "./useWorkspaceFileTree";
 import { WorkspaceFileImagePreview } from "./WorkspaceFileImagePreview";
 import { WorkspaceFileWebPreview } from "./WorkspaceFileWebPreview";
 import {
@@ -251,15 +247,12 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     props.route.params,
   );
   const revealedInspectorRef = useRef(false);
-  const entriesQuery = useEnvironmentQuery(
-    environmentId !== null && cwd !== null && !fileInspector.supported
-      ? projectEnvironment.listEntries({
-          environmentId,
-          input: { cwd },
-        })
-      : null,
-  );
-  const entriesData = entriesQuery.data as ProjectListEntriesResult | null;
+  const fileTreeState = useWorkspaceFileTree({
+    cwd,
+    enabled: !fileInspector.supported,
+    environmentId,
+    selectedPath: null,
+  });
   const handleReturnToThread = useCallback(() => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -408,7 +401,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
               {
                 accessibilityLabel: "Refresh files",
                 icon: "arrow.clockwise",
-                onPress: entriesQuery.refresh,
+                onPress: fileTreeState.refresh,
               },
             ]}
           />
@@ -449,14 +442,16 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
         </>
       )}
       <FileTreeBrowser
-        entries={entriesData?.entries ?? []}
-        error={entriesQuery.error}
-        isPending={entriesQuery.isPending}
+        entries={fileTreeState.entries}
+        expandedPaths={fileTreeState.expandedPaths}
+        error={fileTreeState.error}
+        isPending={fileTreeState.isPending}
         searchQuery={searchQuery}
         selectedPath={null}
         onPreviewFile={handlePreviewFile}
-        onRefresh={entriesQuery.refresh}
+        onRefresh={fileTreeState.refresh}
         onSelectFile={handleSelectFile}
+        onToggleDirectory={fileTreeState.toggleDirectory}
       />
       <FilesToolbarBottomFade />
     </>

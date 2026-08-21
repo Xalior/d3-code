@@ -12,7 +12,6 @@ import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import {
   buildFileTree,
-  defaultExpandedTreePaths,
   flattenFileTree,
   type FileTreeNode,
   type VisibleFileTreeNode,
@@ -31,15 +30,6 @@ function cachedFileTree(entries: ReadonlyArray<ProjectEntry>): ReadonlyArray<Fil
   const tree = buildFileTree(entries);
   fileTreeCache.set(entries, tree);
   return tree;
-}
-
-function ancestorPaths(path: string): ReadonlyArray<string> {
-  const parts = path.split("/").filter(Boolean);
-  const ancestors: string[] = [];
-  for (let index = 1; index < parts.length; index += 1) {
-    ancestors.push(parts.slice(0, index).join("/"));
-  }
-  return ancestors;
 }
 
 const FileTreeRow = memo(function FileTreeRow(props: {
@@ -97,7 +87,7 @@ const FileTreeRow = memo(function FileTreeRow(props: {
       >
         {node.name}
       </Text>
-      {node.kind === "directory" ? (
+      {node.kind === "directory" && node.children.length > 0 ? (
         <Text className="text-2xs font-t3-medium text-foreground-tertiary">
           {node.children.length}
         </Text>
@@ -108,6 +98,11 @@ const FileTreeRow = memo(function FileTreeRow(props: {
 
 export function FileTreeBrowser(props: {
   readonly entries: ReadonlyArray<ProjectEntry>;
+  /**
+   * Directories the tree shows open. The workspace is read one directory at a
+   * time, so whoever owns this set also owns which listings get asked for.
+   */
+  readonly expandedPaths: ReadonlySet<string>;
   readonly error: string | null;
   readonly isPending: boolean;
   readonly searchQuery: string;
@@ -115,8 +110,8 @@ export function FileTreeBrowser(props: {
   readonly onPreviewFile?: (path: string) => void;
   readonly onRefresh: () => void;
   readonly onSelectFile: (path: string) => void;
+  readonly onToggleDirectory: (path: string) => void;
 }) {
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingSelection, setPendingSelection] = useState<{
     readonly path: string;
     readonly selectedPathAtPress: string | null;
@@ -126,7 +121,13 @@ export function FileTreeBrowser(props: {
   // observed adjustedContentInset bottom (~102) seen in the native trace.
   const headerInset = NATIVE_LIQUID_GLASS_SUPPORTED ? insets.top + IOS_NAV_BAR_HEIGHT : 0;
   const iconColor = String(useThemeColor("--color-icon-muted"));
-  const { onPreviewFile, onSelectFile, selectedPath: controlledSelectedPath } = props;
+  const {
+    expandedPaths,
+    onPreviewFile,
+    onSelectFile,
+    onToggleDirectory,
+    selectedPath: controlledSelectedPath,
+  } = props;
   const controlledSelectedPathRef = useRef(controlledSelectedPath);
   const pendingSelectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   controlledSelectedPathRef.current = controlledSelectedPath;
@@ -136,7 +137,6 @@ export function FileTreeBrowser(props: {
       ? pendingSelection.path
       : controlledSelectedPath;
   const tree = useMemo(() => cachedFileTree(props.entries), [props.entries]);
-  const defaultExpanded = useMemo(() => defaultExpandedTreePaths(tree), [tree]);
   const visibleNodes = useMemo(
     () =>
       flattenFileTree({
@@ -147,32 +147,6 @@ export function FileTreeBrowser(props: {
     [expandedPaths, props.searchQuery, tree],
   );
 
-  useEffect(() => {
-    setExpandedPaths((current) => {
-      if (current.size > 0 || defaultExpanded.size === 0) {
-        return current;
-      }
-      return new Set(defaultExpanded);
-    });
-  }, [defaultExpanded]);
-
-  useEffect(() => {
-    if (!controlledSelectedPath) {
-      return;
-    }
-    setExpandedPaths((current) => {
-      const ancestors = ancestorPaths(controlledSelectedPath);
-      if (ancestors.every((ancestor) => current.has(ancestor))) {
-        return current;
-      }
-      const next = new Set(current);
-      for (const ancestor of ancestors) {
-        next.add(ancestor);
-      }
-      return next;
-    });
-  }, [controlledSelectedPath]);
-
   useEffect(
     () => () => {
       if (pendingSelectionTimeoutRef.current !== null) {
@@ -182,17 +156,6 @@ export function FileTreeBrowser(props: {
     [],
   );
 
-  const toggleDirectory = useCallback((path: string) => {
-    setExpandedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
   const handleSelectFile = useCallback(
     (path: string) => {
       if (pendingSelectionTimeoutRef.current !== null) {
@@ -217,12 +180,12 @@ export function FileTreeBrowser(props: {
         selected={item.node.kind === "file" && item.node.path === selectedPath}
         expanded={expandedPaths.has(item.node.path)}
         iconColor={iconColor}
-        onPressDirectory={toggleDirectory}
+        onPressDirectory={onToggleDirectory}
         onPreviewFile={onPreviewFile}
         onPressFile={handleSelectFile}
       />
     ),
-    [expandedPaths, handleSelectFile, iconColor, onPreviewFile, selectedPath, toggleDirectory],
+    [expandedPaths, handleSelectFile, iconColor, onPreviewFile, onToggleDirectory, selectedPath],
   );
 
   if (props.error && props.entries.length === 0) {
@@ -269,7 +232,7 @@ export function FileTreeBrowser(props: {
               <Text className="mt-1 text-xs leading-normal text-foreground-muted">
                 {props.searchQuery.trim().length > 0
                   ? "Try a different search."
-                  : "The workspace file index is empty."}
+                  : "This workspace has no files."}
               </Text>
             </>
           )}

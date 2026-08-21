@@ -1,4 +1,4 @@
-import type { EnvironmentId, ProjectListEntriesResult } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { SymbolView } from "../../components/AppSymbol";
 import { useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Platform, Pressable, View, type NativeSyntheticEvent } from "react-native";
@@ -13,11 +13,10 @@ import {
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useThemeColor } from "../../lib/useThemeColor";
-import { projectEnvironment } from "../../state/projects";
-import { useEnvironmentQuery } from "../../state/query";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { FileTreeBrowser } from "./FileTreeBrowser";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
+import { useWorkspaceFileTree } from "./useWorkspaceFileTree";
 
 export function ThreadFileNavigatorPane(props: {
   readonly cwd: string;
@@ -33,13 +32,11 @@ export function ThreadFileNavigatorPane(props: {
   const foregroundColor = String(useThemeColor("--color-foreground"));
   const sheetColor = String(useThemeColor("--color-sheet"));
   const headerScrollEdgeEffects = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
-  const entriesQuery = useEnvironmentQuery(
-    projectEnvironment.listEntries({
-      environmentId: props.environmentId,
-      input: { cwd: props.cwd },
-    }),
-  );
-  const entriesData = entriesQuery.data as ProjectListEntriesResult | null;
+  const fileTreeState = useWorkspaceFileTree({
+    cwd: props.cwd,
+    environmentId: props.environmentId,
+    selectedPath: props.selectedPath,
+  });
   const handlePreviewFile = useCallback(
     (relativePath: string) => {
       preloadWorkspaceFileContents({
@@ -58,26 +55,28 @@ export function ThreadFileNavigatorPane(props: {
           accessibilityLabel: "Refresh files",
           icon: { name: "arrow.clockwise", type: "sfSymbol" as const },
           identifier: "thread-file-navigator-refresh",
-          onPress: entriesQuery.refresh,
+          onPress: fileTreeState.refresh,
           sharesBackground: false,
           tintColor: foregroundColor,
           type: "button" as const,
           width: 44,
         },
       ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"],
-    [entriesQuery.refresh, foregroundColor],
+    [fileTreeState.refresh, foregroundColor],
   );
 
   const fileTree = (
     <FileTreeBrowser
-      entries={entriesData?.entries ?? []}
-      error={entriesQuery.error}
-      isPending={entriesQuery.isPending}
+      entries={fileTreeState.entries}
+      expandedPaths={fileTreeState.expandedPaths}
+      error={fileTreeState.error}
+      isPending={fileTreeState.isPending}
       searchQuery={searchQuery}
       selectedPath={props.selectedPath}
       onPreviewFile={handlePreviewFile}
-      onRefresh={entriesQuery.refresh}
+      onRefresh={fileTreeState.refresh}
       onSelectFile={props.onSelectFile}
+      onToggleDirectory={fileTreeState.toggleDirectory}
     />
   );
 
@@ -150,7 +149,7 @@ export function ThreadFileNavigatorPane(props: {
             accessibilityLabel="Refresh files"
             hitSlop={8}
             className="h-8 w-8 items-center justify-center rounded-full active:bg-subtle"
-            onPress={entriesQuery.refresh}
+            onPress={fileTreeState.refresh}
           >
             <SymbolView name="arrow.clockwise" size={14} tintColor={iconColor} type="monochrome" />
           </Pressable>
