@@ -3,7 +3,13 @@ import type { ExpoConfig } from "expo/config";
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 
-type AppVariant = "development" | "preview" | "production";
+type AppVariant =
+  | "development"
+  | "preview"
+  | "production"
+  | "d3-development"
+  | "d3-preview"
+  | "d3-production";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -59,6 +65,49 @@ const RELEASE_ASSETS = {
   androidNotificationColor: "#FFFFFF",
 } as const;
 
+// d3-code installs beside T3 Code rather than replacing it, so every channel
+// carries its own identifier, name and URL scheme. The three T3 entries below
+// are upstream's and are left as they are, which keeps this block the only
+// thing a rebase has to reconcile.
+//
+// relyingParty is deliberately absent: associated domains require Apple to
+// fetch an apple-app-site-association file naming this bundle from the domain,
+// and clerk.t3.codes is not ours to publish to. Universal links and passkey
+// autofill are unavailable here as a result; custom-scheme links, which pairing
+// uses, are unaffected.
+const D3_DEVELOPMENT_ASSETS = {
+  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIconComposerProject),
+  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
+  androidMonochromeIcon: "./assets/android-icon-mark.png",
+  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidNotificationColor: "#FFFFFF",
+} as const;
+
+const D3_PREVIEW_ASSETS = {
+  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIconComposerProject),
+  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIosIconPng),
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
+  androidMonochromeIcon: "./assets/android-icon-mark.png",
+  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidNotificationColor: "#FFFFFF",
+} as const;
+
+const D3_RELEASE_ASSETS = {
+  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIconComposerProject),
+  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIosIconPng),
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
+  androidMonochromeIcon: "./assets/android-icon-mark.png",
+  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidNotificationColor: "#FFFFFF",
+} as const;
+
 const VARIANT_CONFIG = {
   development: {
     appName: "T3 Code Dev",
@@ -84,6 +133,30 @@ const VARIANT_CONFIG = {
     relyingParty: "clerk.t3.codes",
     assets: RELEASE_ASSETS,
   },
+  "d3-development": {
+    appName: "D3 Code Dev",
+    scheme: "d3code-dev",
+    iosBundleIdentifier: "net.xalior.d3code.dev",
+    androidPackage: "net.xalior.d3code.dev",
+    relyingParty: undefined,
+    assets: D3_DEVELOPMENT_ASSETS,
+  },
+  "d3-preview": {
+    appName: "D3 Code Preview",
+    scheme: "d3code-preview",
+    iosBundleIdentifier: "net.xalior.d3code.preview",
+    androidPackage: "net.xalior.d3code.preview",
+    relyingParty: undefined,
+    assets: D3_PREVIEW_ASSETS,
+  },
+  "d3-production": {
+    appName: "D3 Code",
+    scheme: "d3code",
+    iosBundleIdentifier: "net.xalior.d3code",
+    androidPackage: "net.xalior.d3code",
+    relyingParty: undefined,
+    assets: D3_RELEASE_ASSETS,
+  },
 } as const;
 
 function resolveAppVariant(value: string | undefined): AppVariant {
@@ -91,6 +164,9 @@ function resolveAppVariant(value: string | undefined): AppVariant {
     case "development":
     case "preview":
     case "production":
+    case "d3-development":
+    case "d3-preview":
+    case "d3-production":
       return value;
     default:
       return "production";
@@ -188,11 +264,17 @@ const config: ExpoConfig = {
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    appleTeamId: repoEnv.T3CODE_APPLE_TEAM_ID?.trim() || "ARK85ZXQ4Z",
+    // A variant with no relying party owns no domain it could publish an
+    // apple-app-site-association file to, so claiming one would fail silently.
+    ...(variant.relyingParty
+      ? {
+          associatedDomains: [
+            `applinks:${variant.relyingParty}`,
+            `webcredentials:${variant.relyingParty}`,
+          ],
+        }
+      : {}),
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
