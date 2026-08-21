@@ -363,13 +363,40 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-    // Symlinks are reported as files so a link pointing at an ancestor cannot
-    // be expanded into a cycle.
-    const entries: ProjectEntry[] = dirents.map((dirent) => ({
-      path:
-        target.relativePath.length === 0 ? dirent.name : `${target.relativePath}/${dirent.name}`,
-      kind: dirent.isDirectory() ? ("directory" as const) : ("file" as const),
-    }));
+    // readdir reports a symlink as a link rather than as whatever it points at,
+    // so a linked directory needs a follow to be browsable. Workspaces that
+    // share one directory across sibling checkouts are built out of these, and
+    // a tree that cannot open them hides most of the content.
+    //
+    // A link back to an ancestor makes a cycle the user can walk downwards.
+    // Reading one directory per expansion bounds the cost to what they open by
+    // hand, which is the same bound as a deep tree.
+    const entries: ProjectEntry[] = yield* Effect.forEach(
+      dirents,
+      (dirent) =>
+        Effect.gen(function* () {
+          const entryPath =
+            target.relativePath.length === 0
+              ? dirent.name
+              : `${target.relativePath}/${dirent.name}`;
+          if (dirent.isDirectory()) {
+            return { path: entryPath, kind: "directory" as const };
+          }
+          if (!dirent.isSymbolicLink()) {
+            return { path: entryPath, kind: "file" as const };
+          }
+          // A broken or unreadable link is a leaf: it has nothing to list, and
+          // failing the whole directory over one would blank the panel.
+          const linkedDirectory = yield* Effect.tryPromise(() =>
+            NodeFSP.stat(path.join(target.absolutePath, dirent.name)),
+          ).pipe(
+            Effect.map((stats) => stats.isDirectory()),
+            Effect.orElseSucceed(() => false),
+          );
+          return { path: entryPath, kind: linkedDirectory ? "directory" : "file" } as const;
+        }),
+      { concurrency: 16 },
+    );
 
     return {
       relativePath: target.relativePath,

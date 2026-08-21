@@ -123,6 +123,40 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
     );
   });
 
+  describe("listDirectory", () => {
+    it.effect("reports a symlinked directory as a directory so the tree can open it", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        yield* writeTextFile(cwd, "toolchains/arm/gcc");
+        yield* fileSystem.makeDirectory(path.join(cwd, "game"), { recursive: true });
+        yield* fileSystem.symlink("../toolchains", path.join(cwd, "game/toolchains"));
+        yield* fileSystem.symlink("../missing", path.join(cwd, "game/dangling"));
+        yield* writeTextFile(cwd, "game/main.c");
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const result = yield* workspaceEntries.listDirectory({ cwd, relativePath: "game" });
+
+        expect(result.entries).toEqual(
+          expect.arrayContaining([
+            { path: "game/toolchains", kind: "directory" },
+            { path: "game/main.c", kind: "file" },
+            // A link with no target has nothing to list, so it stays a leaf
+            // rather than failing the directory around it.
+            { path: "game/dangling", kind: "file" },
+          ]),
+        );
+
+        const linked = yield* workspaceEntries.listDirectory({
+          cwd,
+          relativePath: "game/toolchains",
+        });
+        expect(linked.entries).toEqual([{ path: "game/toolchains/arm", kind: "directory" }]);
+      }),
+    );
+  });
+
   describe("search", () => {
     it.effect("returns files and directories relative to cwd", () =>
       Effect.gen(function* () {
