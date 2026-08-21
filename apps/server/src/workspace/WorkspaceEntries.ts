@@ -12,6 +12,9 @@ import * as Schema from "effect/Schema";
 import type {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
+  ProjectEntry,
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
   ProjectSearchContentsInput,
@@ -73,6 +76,30 @@ export const WorkspaceEntriesBrowseError = Schema.Union([
 ]);
 export type WorkspaceEntriesBrowseError = typeof WorkspaceEntriesBrowseError.Type;
 
+export class WorkspaceEntriesListDirectoryFailedError extends Schema.TaggedErrorClass<WorkspaceEntriesListDirectoryFailedError>()(
+  "WorkspaceEntriesListDirectoryFailedError",
+  {
+    cwd: Schema.String,
+    relativePath: Schema.String,
+    absolutePath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to read workspace directory '${this.absolutePath}' in '${this.cwd}'.`;
+  }
+}
+
+export const WorkspaceEntriesListDirectoryError = Schema.Union([
+  WorkspacePaths.WorkspaceRootNotExistsError,
+  WorkspacePaths.WorkspaceRootCreateFailedError,
+  WorkspacePaths.WorkspaceRootStatFailedError,
+  WorkspacePaths.WorkspaceRootNotDirectoryError,
+  WorkspacePaths.WorkspacePathOutsideRootError,
+  WorkspaceEntriesListDirectoryFailedError,
+]);
+export type WorkspaceEntriesListDirectoryError = typeof WorkspaceEntriesListDirectoryError.Type;
+
 export const WorkspaceEntriesError = Schema.Union([
   WorkspacePaths.WorkspaceRootNotExistsError,
   WorkspacePaths.WorkspaceRootCreateFailedError,
@@ -93,6 +120,15 @@ export class WorkspaceEntries extends Context.Service<
     readonly list: (
       input: ProjectListEntriesInput,
     ) => Effect.Effect<ProjectListEntriesResult, WorkspaceEntriesError>;
+    /**
+     * Reads the immediate children of one directory under the workspace root.
+     * Deliberately independent of the workspace search index: the file tree
+     * pages large workspaces in one directory at a time, so this must not wait
+     * on a whole-workspace scan.
+     */
+    readonly listDirectory: (
+      input: ProjectListDirectoryInput,
+    ) => Effect.Effect<ProjectListDirectoryResult, WorkspaceEntriesListDirectoryError>;
     readonly search: (
       input: ProjectSearchEntriesInput,
     ) => Effect.Effect<ProjectSearchEntriesResult, WorkspaceEntriesError>;
@@ -288,7 +324,60 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return WorkspaceEntries.of({ browse, list, refresh, search, searchContents });
+  const listDirectory: WorkspaceEntries["Service"]["listDirectory"] = Effect.fn(
+    "WorkspaceEntries.listDirectory",
+  )(function* (input) {
+    // Resolved against the path service directly: the local wrapper carries the
+    // search index failures in its error channel, and this path never touches
+    // the index.
+    const normalizedCwd = yield* workspacePaths.normalizeWorkspaceRoot(input.cwd);
+    // The workspace root is addressed by an empty relative path, which
+    // resolveRelativePathWithinRoot rejects along with the traversal attempts
+    // it exists to catch, so the root is resolved here instead.
+    const target =
+      input.relativePath.length === 0
+        ? { absolutePath: normalizedCwd, relativePath: "" }
+        : yield* workspacePaths.resolveRelativePathWithinRoot({
+            workspaceRoot: normalizedCwd,
+            relativePath: input.relativePath,
+          });
+
+    const dirents = yield* Effect.tryPromise({
+      try: () => NodeFSP.readdir(target.absolutePath, { withFileTypes: true }),
+      catch: (cause) =>
+        new WorkspaceEntriesListDirectoryFailedError({
+          cwd: normalizedCwd,
+          relativePath: target.relativePath,
+          absolutePath: target.absolutePath,
+          cause,
+        }),
+    }).pipe(
+      // A directory the account may not read is an empty branch of the tree,
+      // not a failure that should blank the panel around it.
+      Effect.catchIf(
+        (error) => {
+          const code = (error.cause as NodeJS.ErrnoException | undefined)?.code;
+          return code === "EACCES" || code === "EPERM";
+        },
+        () => Effect.succeed([]),
+      ),
+    );
+
+    // Symlinks are reported as files so a link pointing at an ancestor cannot
+    // be expanded into a cycle.
+    const entries: ProjectEntry[] = dirents.map((dirent) => ({
+      path:
+        target.relativePath.length === 0 ? dirent.name : `${target.relativePath}/${dirent.name}`,
+      kind: dirent.isDirectory() ? ("directory" as const) : ("file" as const),
+    }));
+
+    return {
+      relativePath: target.relativePath,
+      entries: entries.toSorted((left, right) => left.path.localeCompare(right.path)),
+    };
+  });
+
+  return WorkspaceEntries.of({ browse, list, listDirectory, refresh, search, searchContents });
 });
 
 export const layer = Layer.effect(WorkspaceEntries, make).pipe(

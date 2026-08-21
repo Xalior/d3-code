@@ -35,6 +35,7 @@ import {
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
+  ProjectListDirectoryError,
   ProjectListEntriesError,
   ProjectReadFileError,
   ProjectSearchContentsError,
@@ -202,6 +203,36 @@ function projectEntriesFailureContext(error: WorkspaceEntries.WorkspaceEntriesEr
       };
     default:
       return unexpectedCompatibilityError(error);
+  }
+}
+
+/**
+ * Single-directory listing shares the workspace-root failures with the indexed
+ * listing beside it, and adds the two only it can raise: a path that escapes
+ * the root, and a directory read that failed outright.
+ */
+function projectDirectoryFailureContext(
+  error: WorkspaceEntries.WorkspaceEntriesListDirectoryError,
+): {
+  readonly failure: ProjectEntriesFailure;
+  readonly normalizedCwd?: string;
+  readonly timeout?: string;
+  readonly detail?: string;
+} {
+  switch (error._tag) {
+    case "WorkspacePathOutsideRootError":
+      return {
+        failure: "workspace_path_outside_root",
+        normalizedCwd: error.workspaceRoot,
+      };
+    case "WorkspaceEntriesListDirectoryFailedError":
+      return {
+        failure: "read_directory_failed",
+        normalizedCwd: error.cwd,
+        detail: error.absolutePath,
+      };
+    default:
+      return projectEntriesFailureContext(error);
   }
 }
 
@@ -1818,6 +1849,21 @@ const makeWsRpcLayer = (
                   new ProjectListEntriesError({
                     ...input,
                     ...projectEntriesFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsListDirectory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListDirectory,
+            workspaceEntries.listDirectory(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectListDirectoryError({
+                    ...input,
+                    ...projectDirectoryFailureContext(cause),
                     cause,
                   }),
               ),

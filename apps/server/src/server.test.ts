@@ -4775,6 +4775,59 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
+  it.effect("routes websocket rpc projects.listDirectory one directory at a time", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-ws-project-list-directory-",
+      });
+      yield* fs.makeDirectory(path.join(workspaceDir, "src", "nested"), { recursive: true });
+      yield* fs.writeFileString(path.join(workspaceDir, "root.ts"), "export const root = 1;\n");
+      yield* fs.writeFileString(
+        path.join(workspaceDir, "src", "index.ts"),
+        "export const answer = 42;\n",
+      );
+
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.all({
+            root: client[WS_METHODS.projectsListDirectory]({ cwd: workspaceDir, relativePath: "" }),
+            src: client[WS_METHODS.projectsListDirectory]({
+              cwd: workspaceDir,
+              relativePath: "src",
+            }),
+            escape: client[WS_METHODS.projectsListDirectory]({
+              cwd: workspaceDir,
+              relativePath: "../",
+            }).pipe(Effect.result),
+          }),
+        ),
+      );
+
+      // The root listing carries its own children and nothing from below them.
+      assert.deepEqual(response.root.entries, [
+        { path: "root.ts", kind: "file" },
+        { path: "src", kind: "directory" },
+      ]);
+      assert.deepEqual(response.src.entries, [
+        { path: "src/index.ts", kind: "file" },
+        { path: "src/nested", kind: "directory" },
+      ]);
+      assert.equal(response.src.relativePath, "src");
+      if (
+        response.escape._tag !== "Failure" ||
+        response.escape.failure._tag !== "ProjectListDirectoryError"
+      ) {
+        assert.fail("Expected a ProjectListDirectoryError");
+      }
+      assert.equal(response.escape.failure.failure, "workspace_path_outside_root");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
   it.effect("routes websocket rpc projects.searchEntries excludes gitignored files", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
