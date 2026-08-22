@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   ProjectListDirectoryResult,
-  ProjectListEntriesResult,
   ProjectReadFileResult,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -28,10 +27,6 @@ interface ProjectQueryState<A> {
   readonly error: string | null;
   readonly isPending: boolean;
   readonly refresh: () => void;
-}
-
-export function getProjectEntriesQueryAtom(environmentId: EnvironmentId, cwd: string) {
-  return projectEnvironment.listEntries({ environmentId, input: { cwd } });
 }
 
 /** The workspace root is addressed by an empty relative path. */
@@ -150,22 +145,6 @@ function errorMessage<A>(result: AsyncResult.AsyncResult<A, unknown>): string | 
   if (result._tag !== "Failure") return null;
   const cause = Cause.squash(result.cause);
   return cause instanceof Error ? cause.message : "Workspace query failed.";
-}
-
-export function useProjectEntriesQuery(
-  environmentId: EnvironmentId,
-  cwd: string,
-): ProjectQueryState<ProjectListEntriesResult> {
-  const atom = getProjectEntriesQueryAtom(environmentId, cwd);
-  const result = useAtomValue(atom);
-  const refreshAtom = useAtomRefresh(atom);
-  const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
-  return {
-    data: Option.getOrNull(AsyncResult.value(result)),
-    error: errorMessage(result),
-    isPending: result.waiting,
-    refresh,
-  };
 }
 
 /**

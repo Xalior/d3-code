@@ -19,6 +19,13 @@ import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
 
+import {
+  ancestorDirectoryPaths,
+  directoryRestoreOrder,
+  treePath,
+  walkOpenDirectories,
+  WORKSPACE_ROOT_DIRECTORY_PATH,
+} from "./fileTreeDirectories";
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
 import { loadProjectDirectory, useProjectDirectoryQuery } from "./projectFilesQueryState";
 
@@ -45,25 +52,6 @@ const TREE_UNSAFE_CSS = `
   }
   button[data-type='item'] { border-radius: 5px; }
 `;
-
-/** The workspace root is addressed by an empty relative path. */
-const WORKSPACE_ROOT_DIRECTORY_PATH = "";
-
-function treePath(entry: ProjectEntry): string {
-  return entry.kind === "directory" ? `${entry.path}/` : entry.path;
-}
-
-/** Workspace-root-relative paths of every directory containing the given path, outermost first. */
-function ancestorDirectoryPaths(relativePath: string): readonly string[] {
-  const segments = relativePath.split("/").slice(0, -1);
-  const ancestors: string[] = [];
-  let ancestorPath = "";
-  for (const segment of segments) {
-    ancestorPath = ancestorPath ? `${ancestorPath}/${segment}` : segment;
-    ancestors.push(ancestorPath);
-  }
-  return ancestors;
-}
 
 function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }) {
   return (
@@ -130,9 +118,12 @@ export default function FileBrowserPanel({
   // about the workspace grows between renders rather than being derived from
   // one. It lives in refs; the tree itself is what the user sees change.
   const entryKindsRef = useRef<Map<string, ProjectEntry["kind"]>>(new Map());
-  const loadedDirectoriesRef = useRef<Set<string>>(new Set());
-  const unloadedDirectoriesRef = useRef<Set<string>>(new Set());
-  const inFlightDirectoriesRef = useRef<Map<string, Promise<void>>>(new Map());
+  /** Child directories of each directory whose listing has arrived, keyed by that directory. */
+  const directoryChildrenRef = useRef<Map<string, readonly string[]>>(new Map());
+  const readDirectoriesRef = useRef<Set<string>>(new Set());
+  /** Directories the tree holds open, as of the last walk. A refresh reopens these. */
+  const expandedDirectoriesRef = useRef<Set<string>>(new Set());
+  const inFlightDirectoriesRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const syncingSelectionRef = useRef(false);
   const treeSelectionPathRef = useRef<string | null>(null);
   const handledRevealRef = useRef<{ path: string; revealId: number } | null>(null);
@@ -270,32 +261,36 @@ export default function FileBrowserPanel({
     }
     search.setValue(value);
   };
-  const registerEntries = useCallback((entries: readonly ProjectEntry[]) => {
-    for (const entry of entries) {
-      entryKindsRef.current.set(entry.path, entry.kind);
-      if (entry.kind === "directory" && !loadedDirectoriesRef.current.has(entry.path)) {
-        unloadedDirectoriesRef.current.add(entry.path);
+  const registerDirectory = useCallback(
+    (relativePath: string, entries: readonly ProjectEntry[]) => {
+      const childDirectories: string[] = [];
+      for (const entry of entries) {
+        entryKindsRef.current.set(entry.path, entry.kind);
+        if (entry.kind === "directory") childDirectories.push(entry.path);
       }
-    }
-  }, []);
+      directoryChildrenRef.current.set(relativePath, childDirectories);
+      readDirectoriesRef.current.add(relativePath);
+    },
+    [],
+  );
 
-  // Reads one directory and grafts its children onto the tree. Callers racing
-  // for the same directory share the one request, so an expand that coincides
-  // with a reveal does not read it twice.
+  // Reads one directory, grafts its children onto the tree, and reports whether
+  // the directory could be read at all. Callers racing for the same directory
+  // share the one request, so an expand that coincides with a reveal does not
+  // read it twice.
   const loadDirectory = useCallback(
-    (relativePath: string): Promise<void> => {
-      if (loadedDirectoriesRef.current.has(relativePath)) return Promise.resolve();
+    (relativePath: string): Promise<boolean> => {
+      if (readDirectoriesRef.current.has(relativePath)) return Promise.resolve(true);
       const inFlight = inFlightDirectoriesRef.current.get(relativePath);
       if (inFlight) return inFlight;
       const request = loadProjectDirectory(environmentId, cwd, relativePath)
         .then((result) => {
-          if (result === null) return;
-          loadedDirectoriesRef.current.add(relativePath);
-          unloadedDirectoriesRef.current.delete(relativePath);
-          registerEntries(result.entries);
+          if (result === null) return false;
+          registerDirectory(relativePath, result.entries);
           model.batch(
             result.entries.map((entry) => ({ path: treePath(entry), type: "add" as const })),
           );
+          return true;
         })
         .finally(() => {
           inFlightDirectoriesRef.current.delete(relativePath);
@@ -303,7 +298,31 @@ export default function FileBrowserPanel({
       inFlightDirectoriesRef.current.set(relativePath, request);
       return request;
     },
-    [cwd, environmentId, model, registerEntries],
+    [cwd, environmentId, model, registerDirectory],
+  );
+
+  // Reopens the directories the tree held open before it was rebuilt, outermost
+  // first. A directory that no longer reads — deleted from disk between
+  // refreshes — takes its own branch out of the reopen and leaves the rest of
+  // the tree standing.
+  const restoreExpandedDirectories = useCallback(
+    async (directoryPaths: readonly string[], isCancelled: () => boolean) => {
+      const goneDirectoryPaths: string[] = [];
+      for (const directoryPath of directoryPaths) {
+        if (goneDirectoryPaths.some((gonePath) => directoryPath.startsWith(`${gonePath}/`))) {
+          continue;
+        }
+        const read = await loadDirectory(directoryPath);
+        if (isCancelled()) return;
+        if (!read) {
+          goneDirectoryPaths.push(directoryPath);
+          continue;
+        }
+        const item = model.getItem(`${directoryPath}/`);
+        if (item !== null && "expand" in item) item.expand();
+      }
+    },
+    [loadDirectory, model],
   );
 
   const handleRefresh = () => {
@@ -311,35 +330,66 @@ export default function FileBrowserPanel({
     onRefreshSelectedFile?.();
   };
 
-  // The workspace root's own children seed the tree. A refresh re-seeds it,
-  // which drops every directory paged in below and lets the user open the ones
-  // they still want.
+  // The workspace root's own children seed the tree; everything below it is
+  // paged in as directories open. A refresh re-reads the root, rebuilds from
+  // it, and reopens what the user had open.
   useEffect(() => {
     const rootEntries = rootQuery.data?.entries;
     if (rootEntries === undefined) return;
-    entryKindsRef.current = new Map(rootEntries.map((entry) => [entry.path, entry.kind]));
-    loadedDirectoriesRef.current = new Set([WORKSPACE_ROOT_DIRECTORY_PATH]);
-    unloadedDirectoriesRef.current = new Set(
-      rootEntries.flatMap((entry) => (entry.kind === "directory" ? [entry.path] : [])),
-    );
+    const reopenPaths = directoryRestoreOrder(expandedDirectoriesRef.current);
+    entryKindsRef.current = new Map();
+    directoryChildrenRef.current = new Map();
+    readDirectoriesRef.current = new Set();
+    expandedDirectoriesRef.current = new Set();
     inFlightDirectoriesRef.current = new Map();
+    registerDirectory(WORKSPACE_ROOT_DIRECTORY_PATH, rootEntries);
     model.resetPaths(rootEntries.map(treePath));
-  }, [model, rootQuery.data]);
+    if (reopenPaths.length === 0) return;
+    let cancelled = false;
+    void restoreExpandedDirectories(reopenPaths, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [model, registerDirectory, restoreExpandedDirectories, rootQuery.data]);
 
-  // The tree has no "children wanted" callback, so expansion is observed
-  // instead: every controller notification is a chance for a directory the
-  // panel has not read yet to have just been opened.
+  // `@pierre/trees` drops expand and collapse from onMutation, so nothing
+  // announces that a directory was opened and the tree has to be read back.
+  // Each controller notification schedules one walk on the next frame, so a
+  // burst of them — a selection change, a run of search keystrokes — costs a
+  // single pass, and that pass covers the open part of the tree rather than
+  // every directory the panel has discovered.
   useEffect(() => {
-    const loadExpandedDirectories = () => {
-      for (const directoryPath of unloadedDirectoriesRef.current) {
-        const item = model.getItem(`${directoryPath}/`);
-        if (item !== null && "isExpanded" in item && item.isExpanded()) {
-          void loadDirectory(directoryPath);
-        }
+    let scheduledFrame: number | null = null;
+    const walkTree = () => {
+      scheduledFrame = null;
+      const walk = walkOpenDirectories({
+        childDirectories: (directoryPath) => directoryChildrenRef.current.get(directoryPath) ?? [],
+        isExpanded: (directoryPath) => {
+          const item = model.getItem(`${directoryPath}/`);
+          return item !== null && "isExpanded" in item && item.isExpanded();
+        },
+        isRead: (directoryPath) => readDirectoriesRef.current.has(directoryPath),
+      });
+      for (const directoryPath of walk.closedPaths) {
+        expandedDirectoriesRef.current.delete(directoryPath);
+      }
+      for (const directoryPath of walk.openPaths) {
+        expandedDirectoriesRef.current.add(directoryPath);
+      }
+      for (const directoryPath of walk.unreadPaths) {
+        void loadDirectory(directoryPath);
       }
     };
-    loadExpandedDirectories();
-    return model.subscribe(loadExpandedDirectories);
+    const scheduleWalk = () => {
+      if (scheduledFrame !== null) return;
+      scheduledFrame = requestAnimationFrame(walkTree);
+    };
+    scheduleWalk();
+    const unsubscribe = model.subscribe(scheduleWalk);
+    return () => {
+      if (scheduledFrame !== null) cancelAnimationFrame(scheduledFrame);
+      unsubscribe();
+    };
   }, [loadDirectory, model]);
 
   useEffect(() => {
