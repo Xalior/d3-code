@@ -4,6 +4,8 @@ import {
   type GrepCursor,
   type GrepOptions,
   type GrepResult,
+  type Result,
+  type ScanProgress,
 } from "@ff-labs/fff-node";
 import { afterEach, expect, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
@@ -30,6 +32,19 @@ function fileItem(relativePath: string): FileItem {
   };
 }
 
+function scanProgress(overrides: Partial<ScanProgress> = {}): () => Result<ScanProgress> {
+  return () => ({
+    ok: true as const,
+    value: {
+      scannedFilesCount: 0,
+      isScanning: false,
+      isWatcherReady: true,
+      isWarmupComplete: true,
+      ...overrides,
+    },
+  });
+}
+
 it.effect("filters image searches before applying the result limit", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -49,6 +64,7 @@ it.effect("filters image searches before applying the result limit", () =>
       const finder = {
         destroy: vi.fn(),
         waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
+        getScanProgress: vi.fn(scanProgress()),
         fileSearch,
       } as unknown as FileFinder;
       vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
@@ -120,24 +136,85 @@ it.effect("waits for the full content index warmup before returning", () =>
   }),
 );
 
-it.effect("preserves a full-index warmup timeout as a structured error", () =>
-  Effect.gen(function* () {
-    const finder = {
-      destroy: vi.fn(),
-      waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: false })),
-    } as unknown as FileFinder;
-    vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
+it.effect("searches a workspace whose scan outran the startup budget", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const destroy = vi.fn();
+      const finder = {
+        destroy,
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: false })),
+        getScanProgress: vi.fn(scanProgress({ isScanning: true, scannedFilesCount: 312_000 })),
+        mixedSearch: vi.fn(() => ({
+          ok: true as const,
+          value: {
+            items: [{ type: "file" as const, item: fileItem("src/needle.ts") }],
+            scores: [],
+            totalMatched: 1,
+            totalFiles: 1,
+            totalDirs: 0,
+          },
+        })),
+      } as unknown as FileFinder;
+      vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
 
-    const error = yield* Effect.flip(
-      Effect.scoped(WorkspaceSearchIndex.make("/workspace/project", "content")),
-    );
+      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project");
+      const result = yield* searchIndex.search("needle", 10);
 
-    expect(error).toMatchObject({
-      _tag: "WorkspaceSearchIndexScanTimedOut",
-      cwd: "/workspace/project",
-      timeout: "15 seconds",
-    });
-  }),
+      expect(result.entries).toEqual([{ kind: "file", path: "src/needle.ts" }]);
+      expect(result.indexStatus).toEqual({ isScanning: true, scannedFiles: 312_000 });
+      // The part of the workspace already read is the whole asset. Releasing
+      // the finder here restarts the scan from nothing on the next attempt,
+      // which is how a workspace too large for one budget stayed unsearchable.
+      expect(destroy).not.toHaveBeenCalled();
+    }),
+  ),
+);
+
+it.effect("reports a settled index once the scan has finished", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const finder = {
+        destroy: vi.fn(),
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
+        getScanProgress: vi.fn(scanProgress({ scannedFilesCount: 1_204 })),
+        mixedSearch: vi.fn(() => ({
+          ok: true as const,
+          value: { items: [], scores: [], totalMatched: 0, totalFiles: 0, totalDirs: 0 },
+        })),
+      } as unknown as FileFinder;
+      vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
+
+      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project");
+      const result = yield* searchIndex.search("needle", 10);
+
+      expect(result.indexStatus).toEqual({ isScanning: false, scannedFiles: 1_204 });
+    }),
+  ),
+);
+
+it.effect("keeps the index when a rescan outruns the budget", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const destroy = vi.fn();
+      const finder = {
+        destroy,
+        waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: false })),
+        getScanProgress: vi.fn(scanProgress({ isScanning: true, scannedFilesCount: 9 })),
+        scanFiles: vi.fn(() => ({ ok: true as const, value: undefined })),
+      } as unknown as FileFinder;
+      vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
+
+      const searchIndex = yield* WorkspaceSearchIndex.make("/workspace/project");
+      const error = yield* Effect.flip(searchIndex.refresh());
+
+      expect(error).toMatchObject({
+        _tag: "WorkspaceSearchIndexScanTimedOut",
+        cwd: "/workspace/project",
+        timeout: "15 seconds",
+      });
+      expect(destroy).not.toHaveBeenCalled();
+    }),
+  ),
 );
 
 it.effect("preserves FileFinder destroy failures as structured defects", () =>
