@@ -15,7 +15,7 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
 import { orchestrationEnvironment } from "./orchestration";
@@ -31,6 +31,9 @@ import {
 
 const COMPOSER_PATH_SEARCH_DEBOUNCE_MS = 200;
 const COMPOSER_PATH_SEARCH_LIMIT = 20;
+const WORKSPACE_ENTRY_SEARCH_LIMIT = 200;
+/** How often a search is repeated while the workspace index is still building. */
+const INDEXING_POLL_INTERVAL_MS = 2_000;
 const THREAD_SEARCH_DEBOUNCE_MS = 200;
 const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
@@ -271,6 +274,64 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return {
     entries: result.data?.entries ?? [],
     error: result.error,
+    isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
+    refresh: result.refresh,
+  };
+}
+
+/**
+ * Backing query for the file tree's search field: a debounced, bounded search
+ * of the whole workspace, files and directories alike. The tree itself only
+ * holds the directories the user has opened, so filtering it locally would
+ * only ever find what had already been read.
+ *
+ * A workspace large enough that its index is still being built answers from
+ * the part already read, so the same query is repeated while the scan runs and
+ * the result list grows with it.
+ */
+export function useWorkspaceEntrySearch(target: ComposerPathSearchTarget) {
+  const normalizedTarget = useMemo(
+    () => ({
+      environmentId: target.environmentId,
+      cwd: target.cwd,
+      query: normalizeComposerPathSearchQuery(target.query),
+    }),
+    [target.cwd, target.environmentId, target.query],
+  );
+  const debouncedTarget = useDebouncedValue(normalizedTarget, COMPOSER_PATH_SEARCH_DEBOUNCE_MS);
+  const result = useEnvironmentQuery(
+    debouncedTarget.environmentId !== null &&
+      debouncedTarget.cwd !== null &&
+      debouncedTarget.query.length > 0
+      ? projectEnvironment.searchEntries({
+          environmentId: debouncedTarget.environmentId,
+          input: {
+            cwd: debouncedTarget.cwd,
+            query: debouncedTarget.query,
+            limit: WORKSPACE_ENTRY_SEARCH_LIMIT,
+          },
+        })
+      : null,
+  );
+  const indexStatus = result.data?.indexStatus ?? null;
+  const isScanning = indexStatus?.isScanning === true;
+  // Held in a ref so the poll survives the renders between two results: the
+  // refresh callback belongs to the current query atom, and re-running the
+  // effect for a new identity would restart the interval before it ever fires.
+  const refreshRef = useRef(result.refresh);
+  refreshRef.current = result.refresh;
+  useEffect(() => {
+    if (!isScanning) return;
+    const interval = setInterval(() => refreshRef.current(), INDEXING_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isScanning]);
+
+  return {
+    entries: result.data?.entries ?? [],
+    error: result.error,
+    // Null until a result arrives, and on servers that do not report how far
+    // their workspace index has got.
+    indexStatus,
     isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
     refresh: result.refresh,
   };

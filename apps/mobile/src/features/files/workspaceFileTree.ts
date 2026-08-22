@@ -112,6 +112,17 @@ export function withExpandedAncestors(
   return { listings: state.listings, expandedPaths };
 }
 
+/** Opens a directory and everything containing it, so one found by search can be shown in place. */
+export function withExpandedDirectory(
+  state: WorkspaceFileTreeState,
+  directoryPath: string,
+): WorkspaceFileTreeState {
+  const expandedPaths = new Set(state.expandedPaths);
+  for (const ancestorPath of ancestorDirectoryPaths(directoryPath)) expandedPaths.add(ancestorPath);
+  expandedPaths.add(directoryPath);
+  return { listings: state.listings, expandedPaths };
+}
+
 /** Every entry the tree knows about, as one array a tree builder can fold. */
 export function listedEntries(state: WorkspaceFileTreeState): ReadonlyArray<ProjectEntry> {
   const entries: ProjectEntry[] = [];
