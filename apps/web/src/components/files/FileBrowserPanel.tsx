@@ -116,7 +116,7 @@ function FileSearchField(props: {
 function IndexingNotice(props: { scannedFiles: number }) {
   return (
     <div className="px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-      {`Still indexing this workspace — ${props.scannedFiles.toLocaleString()} files so far. Results improve as it reads.`}
+      {`Still indexing this workspace. ${props.scannedFiles.toLocaleString()} files so far, and results improve as it reads.`}
     </div>
   );
 }
@@ -431,9 +431,9 @@ export default function FileBrowserPanel({
   // `@pierre/trees` drops expand and collapse from onMutation, so nothing
   // announces that a directory was opened and the tree has to be read back.
   // Each controller notification schedules one walk on the next frame, so a
-  // burst of them — a selection change, a run of search keystrokes — costs a
-  // single pass, and that pass covers the open part of the tree rather than
-  // every directory the panel has discovered.
+  // burst of them, such as a run of selection changes, costs a single pass,
+  // and that pass covers the open part of the tree rather than every directory
+  // the panel has discovered.
   useEffect(() => {
     let scheduledFrame: number | null = null;
     const walkTree = () => {

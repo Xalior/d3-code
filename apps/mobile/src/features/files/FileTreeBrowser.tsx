@@ -255,7 +255,7 @@ export function FileTreeBrowser(props: {
         isSearching && props.searchIndexStatus?.isScanning === true ? (
           <View className="px-4 pb-2">
             <Text className="text-xs leading-normal text-foreground-muted">
-              {`Still indexing this workspace — ${props.searchIndexStatus.scannedFiles.toLocaleString()} files so far. Results improve as it reads.`}
+              {`Still indexing this workspace. ${props.searchIndexStatus.scannedFiles.toLocaleString()} files so far, and results improve as it reads.`}
             </Text>
           </View>
         ) : null
