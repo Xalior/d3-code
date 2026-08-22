@@ -291,6 +291,9 @@ export function useProjectPathSearch(
   return {
     entries: result.data?.entries ?? [],
     error: result.error,
+    // Null until a result arrives, and on servers that do not report how far
+    // their workspace index has got.
+    indexStatus: result.data?.indexStatus ?? null,
     isPending:
       !areProjectPathSearchTargetsEqual(normalizedTarget, debouncedTarget) || result.isPending,
     searchedQuery: debouncedTarget.query ?? "",

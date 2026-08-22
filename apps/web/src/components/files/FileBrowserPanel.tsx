@@ -3,10 +3,10 @@ import type {
   ContextMenuOpenContext as TreeContextMenuOpenContext,
 } from "@pierre/trees";
 import type { EnvironmentId, ProjectEntry } from "@t3tools/contracts";
-import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { RotateCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupInput } from "~/components/ui/input-group";
@@ -19,6 +19,8 @@ import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
 
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
+
 import {
   ancestorDirectoryPaths,
   directoryRestoreOrder,
@@ -27,7 +29,11 @@ import {
   WORKSPACE_ROOT_DIRECTORY_PATH,
 } from "./fileTreeDirectories";
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
-import { loadProjectDirectory, useProjectDirectoryQuery } from "./projectFilesQueryState";
+import {
+  loadProjectDirectory,
+  useProjectDirectoryQuery,
+  useWorkspaceEntrySearch,
+} from "./projectFilesQueryState";
 
 interface FileBrowserPanelProps {
   environmentId: EnvironmentId;
@@ -99,6 +105,59 @@ function FileSearchField(props: {
         }}
       />
     </InputGroup>
+  );
+}
+
+/**
+ * The workspace index reads a large workspace in the background, so a search
+ * that lands mid-scan is answered from part of the workspace. Saying how much
+ * has been read is the difference between "no matches" and "no matches yet".
+ */
+function IndexingNotice(props: { scannedFiles: number }) {
+  return (
+    <div className="px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+      {`Still indexing this workspace — ${props.scannedFiles.toLocaleString()} files so far. Results improve as it reads.`}
+    </div>
+  );
+}
+
+/**
+ * Search results replace the tree rather than filtering it. The tree holds
+ * only the directories the user has opened, so a match anywhere else has no
+ * row to reveal, and the server returns results in its own ranked order that a
+ * tree would sort away.
+ */
+function WorkspaceSearchResults(props: {
+  entries: readonly ProjectEntry[];
+  error: string | null;
+  isPending: boolean;
+  onOpenEntry: (entry: ProjectEntry) => void;
+  theme: "light" | "dark";
+}) {
+  if (props.error) {
+    return <div className="p-4 text-xs leading-relaxed text-destructive">{props.error}</div>;
+  }
+  if (props.entries.length === 0) {
+    return (
+      <div className="p-4 text-xs leading-relaxed text-muted-foreground">
+        {props.isPending ? "Searching workspace…" : "No matching files."}
+      </div>
+    );
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-1">
+      {props.entries.map((entry) => (
+        <button
+          key={`${entry.kind}:${entry.path}`}
+          type="button"
+          className="flex w-full items-center gap-1.5 rounded-[5px] px-1.5 py-1 text-left text-xs hover:bg-accent/60"
+          onClick={() => props.onOpenEntry(entry)}
+        >
+          <PierreEntryIcon pathValue={entry.path} kind={entry.kind} theme={props.theme} />
+          <span className="min-w-0 flex-1 truncate text-foreground">{entry.path}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -253,14 +312,9 @@ export default function FileBrowserPanel({
     search: false,
     unsafeCSS: TREE_UNSAFE_CSS,
   });
-  const search = useFileTreeSearch(model);
-  const handleSearchValueChange = (value: string) => {
-    if (value.trim().length === 0) {
-      search.close();
-      return;
-    }
-    search.setValue(value);
-  };
+  const [searchQuery, setSearchQuery] = useState("");
+  const isSearching = searchQuery.trim().length > 0;
+  const entrySearch = useWorkspaceEntrySearch(environmentId, cwd, searchQuery);
   const registerDirectory = useCallback(
     (relativePath: string, entries: readonly ProjectEntry[]) => {
       const childDirectories: string[] = [];
@@ -323,6 +377,28 @@ export default function FileBrowserPanel({
       }
     },
     [loadDirectory, model],
+  );
+
+  // A file result opens in the preview pane and leaves the results up, so the
+  // next result is one click away. A directory has nothing to preview, so it
+  // hands the user back to the tree with that directory read and open.
+  const handleOpenSearchResult = useCallback(
+    (entry: ProjectEntry) => {
+      if (entry.kind === "file") {
+        onOpenFile(entry.path);
+        return;
+      }
+      setSearchQuery("");
+      void (async () => {
+        for (const directoryPath of [...ancestorDirectoryPaths(entry.path), entry.path]) {
+          if (!(await loadDirectory(directoryPath))) return;
+          const item = model.getItem(`${directoryPath}/`);
+          if (item !== null && "expand" in item) item.expand();
+        }
+        model.scrollToPath(`${entry.path}/`, { offset: "center" });
+      })();
+    },
+    [loadDirectory, model, onOpenFile],
   );
 
   const handleRefresh = () => {
@@ -397,6 +473,10 @@ export default function FileBrowserPanel({
       handledRevealRef.current = null;
       return;
     }
+    // The tree is not on screen while search results are, and revealing into a
+    // hidden tree would take focus off the search field. The reveal is left
+    // outstanding and runs when the results are dismissed.
+    if (isSearching) return;
     const revealRequest = { path: selectedPath, revealId: selectedPathRevealId };
     const handledReveal = handledRevealRef.current;
     // A refresh re-seeds the tree while the same preview stays open. Replaying
@@ -421,10 +501,10 @@ export default function FileBrowserPanel({
       const selectedItem = model.getItem(selectedPath);
       if (!selectedItem) return;
 
-      // A selection that originated inside the tree (clicking a row, possibly
-      // in an active tree search) is already visible; re-revealing it would
-      // close the search and clobber the user's context. Only sync external
-      // opens (file picker, content search, chat links).
+      // A selection that originated inside the tree (clicking a row) is
+      // already visible; re-revealing it would scroll the tree out from under
+      // the user. Only sync external opens (file picker, content search, chat
+      // links).
       const selectedInTree = model
         .getSelectedPaths()
         .some((path) => path.replace(/\/$/, "") === selectedPath);
@@ -435,7 +515,6 @@ export default function FileBrowserPanel({
       treeSelectionPathRef.current = null;
 
       syncingSelectionRef.current = true;
-      model.closeSearch();
       for (const path of model.getSelectedPaths()) {
         model.getItem(path)?.deselect();
       }
@@ -457,7 +536,7 @@ export default function FileBrowserPanel({
     return () => {
       cancelled = true;
     };
-  }, [loadDirectory, model, selectedPath, selectedPathRevealId]);
+  }, [isSearching, loadDirectory, model, selectedPath, selectedPathRevealId]);
 
   // Tag tree drags with the composer mention payload. The row is read from
   // the composed event path (the tree's shadow root is open), so this does
@@ -498,13 +577,24 @@ export default function FileBrowserPanel({
         <FileSearchField
           name="project-files-search"
           ariaLabel={`Search ${projectName} files`}
-          value={search.value}
-          onValueChange={handleSearchValueChange}
-          onClose={search.close}
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          onClose={() => setSearchQuery("")}
         />
       </div>
-      {rootQuery.error && rootQuery.data === null ? (
+      {isSearching && entrySearch.indexStatus?.isScanning === true ? (
+        <IndexingNotice scannedFiles={entrySearch.indexStatus.scannedFiles} />
+      ) : null}
+      {rootQuery.error && rootQuery.data === null && !isSearching ? (
         <div className="p-4 text-xs leading-relaxed text-destructive">{rootQuery.error}</div>
+      ) : isSearching ? (
+        <WorkspaceSearchResults
+          entries={entrySearch.entries}
+          error={entrySearch.error}
+          isPending={entrySearch.isPending}
+          onOpenEntry={handleOpenSearchResult}
+          theme={resolvedTheme}
+        />
       ) : (
         <FileTree
           model={model}

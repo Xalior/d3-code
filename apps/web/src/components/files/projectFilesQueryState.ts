@@ -7,7 +7,7 @@ import type {
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { projectEnvironment } from "~/state/projects";
@@ -31,6 +31,11 @@ interface ProjectQueryState<A> {
 
 /** The workspace root is addressed by an empty relative path. */
 const PROJECT_ROOT_DIRECTORY_PATH = "";
+
+/** Matches the file tree's own ceiling: more rows than this is not a search result. */
+const WORKSPACE_ENTRY_SEARCH_LIMIT = 200;
+/** How often a search is repeated while the workspace index is still building. */
+const INDEXING_POLL_INTERVAL_MS = 2_000;
 
 export function getProjectDirectoryQueryAtom(
   environmentId: EnvironmentId,
@@ -203,6 +208,33 @@ export function useProjectFilePickerQuery(
     isPending: search.isPending,
     matchedQuery: search.searchedQuery,
   };
+}
+
+/**
+ * Backing query for the file tree's search field: a debounced, bounded search
+ * of the whole workspace, files and directories alike. The tree itself only
+ * holds the directories the user has opened, so filtering it locally would
+ * only ever find what had already been read.
+ *
+ * A workspace large enough that its index is still being built answers from
+ * the part already read, so the same query is repeated while the scan runs and
+ * the result list grows with it.
+ */
+export function useWorkspaceEntrySearch(environmentId: EnvironmentId, cwd: string, query: string) {
+  const search = useProjectPathSearch({ environmentId, cwd, query }, WORKSPACE_ENTRY_SEARCH_LIMIT);
+  const isScanning = search.indexStatus?.isScanning === true;
+  // Held in a ref so the poll survives the renders between two results: the
+  // refresh callback belongs to the current query atom, and re-running the
+  // effect for a new identity would restart the interval before it ever fires.
+  const refreshRef = useRef(search.refresh);
+  refreshRef.current = search.refresh;
+  useEffect(() => {
+    if (!isScanning) return;
+    const interval = setInterval(() => refreshRef.current(), INDEXING_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isScanning]);
+
+  return search;
 }
 
 export function useProjectFileQuery(
