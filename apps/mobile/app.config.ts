@@ -211,7 +211,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: "d3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: "1.0.4",
@@ -227,7 +227,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
-    url: "https://u.expo.dev/1ec4e0c1-1cd9-4538-bdd8-36564d924217",
+    url: "https://u.expo.dev/d1967699-a1db-470b-acfe-6c37e27e17e9",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -424,12 +424,12 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    // d3-code's own EAS project. Updates are served from the project that owns
-    // the app, so this and the updates URL above have to name the same one:
-    // pointing either at another account's project makes the development
-    // server fail to produce a manifest at all.
+    // d3-code's own EAS project. Updates are served by the project that owns
+    // the app, so this and the updates URL above name the same one. Declaring
+    // another account's project stops the development server producing a
+    // manifest at all, with an error that mentions neither.
     eas: {
-      projectId: "1ec4e0c1-1cd9-4538-bdd8-36564d924217",
+      projectId: "d1967699-a1db-470b-acfe-6c37e27e17e9",
     },
   },
   owner: "xalior",
