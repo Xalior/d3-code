@@ -128,7 +128,12 @@ export function FileTreeBrowser(props: {
   const insets = useSafeAreaInsets();
   // Native transparent-header height ≈ safe-area top + nav bar (~44). Matches the
   // observed adjustedContentInset bottom (~102) seen in the native trace.
-  const headerInset = NATIVE_LIQUID_GLASS_SUPPORTED ? insets.top + IOS_NAV_BAR_HEIGHT : 0;
+  //
+  // The header overlays the list on every iOS version, so the inset is needed on
+  // every iOS version. Only who applies it differs: with liquid glass the system
+  // adjusts the content itself, and without it the padding below does the same
+  // job by hand.
+  const headerInset = insets.top + IOS_NAV_BAR_HEIGHT;
   const iconColor = String(useThemeColor("--color-icon-muted"));
   const {
     expandedPaths,
@@ -237,18 +242,17 @@ export function FileTreeBrowser(props: {
       data={visibleNodes}
       keyExtractor={(item) => item.node.path}
       contentInsetAdjustmentBehavior={NATIVE_LIQUID_GLASS_SUPPORTED ? "automatic" : "never"}
-      scrollIndicatorInsets={
-        NATIVE_LIQUID_GLASS_SUPPORTED
-          ? { top: headerInset, left: 0, right: 0, bottom: 0 }
-          : undefined
-      }
+      scrollIndicatorInsets={{ top: headerInset, left: 0, right: 0, bottom: 0 }}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       initialNumToRender={FILE_TREE_INITIAL_RENDER_COUNT}
       maxToRenderPerBatch={FILE_TREE_RENDER_BATCH_SIZE}
       updateCellsBatchingPeriod={16}
       windowSize={5}
-      contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+      contentContainerStyle={{
+        paddingTop: NATIVE_LIQUID_GLASS_SUPPORTED ? 8 : headerInset + 8,
+        paddingBottom: 8,
+      }}
       refreshControl={<RefreshControl refreshing={props.isPending} onRefresh={props.onRefresh} />}
       renderItem={renderItem}
       ListHeaderComponent={
