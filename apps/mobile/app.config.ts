@@ -3,13 +3,7 @@ import type { ExpoConfig } from "expo/config";
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 
-type AppVariant =
-  | "development"
-  | "preview"
-  | "production"
-  | "d3-development"
-  | "d3-preview"
-  | "d3-production";
+type AppVariant = "development" | "preview" | "production";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -32,6 +26,17 @@ if (
   );
 }
 
+// d3-code installs beside T3 Code rather than replacing it, so every channel
+// carries its own identifier, name and URL scheme.
+//
+// The app declares no Expo account and no EAS project. Claiming upstream's is
+// not harmless: the development server asks Expo's API about the declared
+// project before it will serve a manifest, that query returns nothing for an
+// account we are not a member of, and the dev client gets a 500 with no hint
+// that ownership is the reason.
+// Upstream's own asset sets. Kept as the reference for what a d3-code
+// channel still needs its own version of, the Android marks and colours in
+// particular, which have not been drawn yet. Unused by the variants below.
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
@@ -65,16 +70,6 @@ const RELEASE_ASSETS = {
   androidNotificationColor: "#FFFFFF",
 } as const;
 
-// d3-code installs beside T3 Code rather than replacing it, so every channel
-// carries its own identifier, name and URL scheme. The three T3 entries below
-// are upstream's and are left as they are, which keeps this block the only
-// thing a rebase has to reconcile.
-//
-// relyingParty is deliberately absent: associated domains require Apple to
-// fetch an apple-app-site-association file naming this bundle from the domain,
-// and clerk.t3.codes is not ours to publish to. Universal links and passkey
-// autofill are unavailable here as a result; custom-scheme links, which pairing
-// uses, are unaffected.
 const D3_DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIconComposerProject),
@@ -108,32 +103,16 @@ const D3_RELEASE_ASSETS = {
   androidNotificationColor: "#FFFFFF",
 } as const;
 
+// This branch builds d3-code, so the channels carry the d3-code identity and
+// nothing has to be passed at the command line to get it. Upstream's own
+// identifiers stay on the branches that carry upstream's work.
+//
+// relyingParty is deliberately absent. Associated domains require Apple to
+// fetch an apple-app-site-association file naming the bundle from the domain,
+// and clerk.t3.codes is not ours to publish to, so claiming it would fail
+// quietly. Custom-scheme links, which pairing uses, are unaffected.
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
-    scheme: "t3code-dev",
-    iosBundleIdentifier: "com.t3tools.t3code.dev",
-    androidPackage: "com.t3tools.t3code.dev",
-    relyingParty: "clerk.t3.codes",
-    assets: DEVELOPMENT_ASSETS,
-  },
-  preview: {
-    appName: "T3 Code Preview",
-    scheme: "t3code-preview",
-    iosBundleIdentifier: "com.t3tools.t3code.preview",
-    androidPackage: "com.t3tools.t3code.preview",
-    relyingParty: "clerk.t3.codes",
-    assets: PREVIEW_ASSETS,
-  },
-  production: {
-    appName: "T3 Code",
-    scheme: "t3code",
-    iosBundleIdentifier: "com.t3tools.t3code",
-    androidPackage: "com.t3tools.t3code",
-    relyingParty: "clerk.t3.codes",
-    assets: RELEASE_ASSETS,
-  },
-  "d3-development": {
     appName: "D3 Code Dev",
     scheme: "d3code-dev",
     iosBundleIdentifier: "net.xalior.d3code.dev",
@@ -141,7 +120,7 @@ const VARIANT_CONFIG = {
     relyingParty: undefined,
     assets: D3_DEVELOPMENT_ASSETS,
   },
-  "d3-preview": {
+  preview: {
     appName: "D3 Code Preview",
     scheme: "d3code-preview",
     iosBundleIdentifier: "net.xalior.d3code.preview",
@@ -149,7 +128,7 @@ const VARIANT_CONFIG = {
     relyingParty: undefined,
     assets: D3_PREVIEW_ASSETS,
   },
-  "d3-production": {
+  production: {
     appName: "D3 Code",
     scheme: "d3code",
     iosBundleIdentifier: "net.xalior.d3code",
@@ -164,9 +143,6 @@ function resolveAppVariant(value: string | undefined): AppVariant {
     case "development":
     case "preview":
     case "production":
-    case "d3-development":
-    case "d3-preview":
-    case "d3-production":
       return value;
     default:
       return "production";
@@ -175,12 +151,6 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
 
-// The d3-code channels belong to no Expo account and have no EAS project.
-// Claiming upstream's is not harmless: the development server asks Expo's API
-// about the declared project before it will serve a manifest, that query
-// returns nothing for an account we are not a member of, and the dev client
-// gets a 500 with no hint that ownership is the reason.
-const isD3Variant = APP_VARIANT.startsWith("d3-");
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
@@ -255,16 +225,9 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
-  // Over-the-air updates are served from the owning EAS project, so a channel
-  // that has no project cannot check for them and must not try.
-  updates: isD3Variant
-    ? { enabled: false }
-    : {
-        enabled: true,
-        url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-        checkAutomatically: "ON_LOAD",
-        fallbackToCacheTimeout: 0,
-      },
+  // Over-the-air updates are served from the owning EAS project. d3-code has
+  // none, so there is nothing to check and checking would only fail.
+  updates: { enabled: false },
   ios: {
     icon: variant.assets.iosIcon,
     supportsTablet: true,
@@ -458,15 +421,7 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    ...(isD3Variant
-      ? {}
-      : {
-          eas: {
-            projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-          },
-        }),
   },
-  ...(isD3Variant ? {} : { owner: "pingdotgg" }),
 };
 
 export default config;
