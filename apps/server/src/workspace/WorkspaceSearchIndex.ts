@@ -22,6 +22,7 @@ import type {
   ProjectSearchContentsInput,
   ProjectSearchContentsResult,
   ProjectSearchEntriesResult,
+  ProjectSearchIndexStatus,
 } from "@t3tools/contracts";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 
@@ -328,11 +329,16 @@ const createFinder = Effect.fn("WorkspaceSearchIndex.createFinder")(function* (
   });
 });
 
+/**
+ * Waits out the index's startup budget and reports whether the scan and its
+ * warmup finished inside it. Missing the budget is an answer, not a failure:
+ * the native scan carries on in the background and the index stays usable, so
+ * only a finder that cannot be asked at all fails here.
+ */
 const waitForIndexReady = Effect.fn("WorkspaceSearchIndex.waitForIndexReady")(function* <E>(
-  cwd: string,
   finder: FileFinder,
   onFailure: (input: { readonly reason: string; readonly cause?: unknown }) => E,
-): Effect.fn.Return<void, E | WorkspaceSearchIndexScanTimedOut> {
+): Effect.fn.Return<boolean, E> {
   const result = yield* Effect.tryPromise({
     try: () => finder.waitForIndexReady(WORKSPACE_INDEX_SCAN_TIMEOUT_MS),
     catch: (cause) =>
@@ -344,12 +350,7 @@ const waitForIndexReady = Effect.fn("WorkspaceSearchIndex.waitForIndexReady")(fu
   if (!result.ok) {
     return yield* Effect.fail(onFailure({ reason: result.error }));
   }
-  if (!result.value) {
-    return yield* new WorkspaceSearchIndexScanTimedOut({
-      cwd,
-      timeout: WORKSPACE_INDEX_SCAN_TIMEOUT,
-    });
-  }
+  return result.value;
 });
 
 export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
@@ -362,8 +363,13 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
       catch: (cause) => new WorkspaceSearchIndexDestroyFailed({ cwd, cause }),
     }).pipe(Effect.orDie),
   );
-  yield* waitForIndexReady(
-    cwd,
+  // A workspace too large to scan inside the budget used to fail the layer
+  // build, which closed the scope, destroyed the finder and threw the partial
+  // scan away, so the next attempt restarted from nothing and the workspace
+  // never became searchable. The index is kept instead: searches run against
+  // whatever has been read so far and carry the scan's progress back to the
+  // caller, and the finder is released only when the LayerMap evicts it.
+  const indexReady = yield* waitForIndexReady(
     finder,
     ({ reason, cause }) =>
       new WorkspaceSearchIndexCreateFailed({
@@ -372,6 +378,26 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         cause,
       }),
   );
+  if (!indexReady) {
+    yield* Effect.logInfo("Workspace search index is still scanning", {
+      cwd,
+      variant,
+      budget: WORKSPACE_INDEX_SCAN_TIMEOUT,
+    });
+  }
+
+  /**
+   * Reads how far the native scan has got, for the status every search result
+   * carries. A finder that cannot report progress is described as settled: the
+   * caller then behaves as it did before progress existed rather than waiting
+   * for a completion it will never be told about.
+   */
+  const readIndexStatus = (): ProjectSearchIndexStatus => {
+    const result = finder.getScanProgress();
+    return result.ok
+      ? { isScanning: result.value.isScanning, scannedFiles: result.value.scannedFilesCount }
+      : { isScanning: false, scannedFiles: 0 };
+  };
 
   const runSearch = Effect.fn("WorkspaceSearchIndex.runSearch")(function* <A>(
     query: string,
@@ -419,8 +445,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         reason: result.error,
       });
     }
-    yield* waitForIndexReady(
-      cwd,
+    const rescanFinished = yield* waitForIndexReady(
       finder,
       ({ reason, cause }) =>
         new WorkspaceSearchIndexRefreshFailed({
@@ -429,6 +454,15 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
           cause,
         }),
     );
+    // The rescan runs on in the background, so this reports an unfinished
+    // refresh rather than a broken index. Callers log it and leave the index
+    // in place.
+    if (!rescanFinished) {
+      return yield* new WorkspaceSearchIndexScanTimedOut({
+        cwd,
+        timeout: WORKSPACE_INDEX_SCAN_TIMEOUT,
+      });
+    }
   });
 
   const list: WorkspaceSearchIndex["Service"]["list"] = Effect.fn("WorkspaceSearchIndex.list")(
@@ -452,22 +486,27 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     "WorkspaceSearchIndex.search",
   )(function* (query, limit, kind, imageOnly) {
     const pageSize = imageOnly ? WORKSPACE_INDEX_PAGE_SIZE : Math.max(1, limit + 1);
-    if (kind === "file" || imageOnly) {
-      const result = yield* runSearch(query, pageSize, "fileSearch", () =>
-        finder.fileSearch(query, { pageSize }),
+    const mapped = yield* Effect.gen(function* () {
+      if (kind === "file" || imageOnly) {
+        const result = yield* runSearch(query, pageSize, "fileSearch", () =>
+          finder.fileSearch(query, { pageSize }),
+        );
+        return mapFileSearchResult(result, limit, imageOnly);
+      }
+      if (kind === "directory") {
+        const result = yield* runSearch(query, pageSize, "directorySearch", () =>
+          finder.directorySearch(query, { pageSize }),
+        );
+        return mapDirectorySearchResult(result, limit);
+      }
+      const result = yield* runSearch(query, pageSize, "mixedSearch", () =>
+        finder.mixedSearch(query, { pageSize }),
       );
-      return mapFileSearchResult(result, limit, imageOnly);
-    }
-    if (kind === "directory") {
-      const result = yield* runSearch(query, pageSize, "directorySearch", () =>
-        finder.directorySearch(query, { pageSize }),
-      );
-      return mapDirectorySearchResult(result, limit);
-    }
-    const result = yield* runSearch(query, pageSize, "mixedSearch", () =>
-      finder.mixedSearch(query, { pageSize }),
-    );
-    return mapMixedSearchResult(result, limit);
+      return mapMixedSearchResult(result, limit);
+    });
+    // Read after the search so the figure is never behind the entries it
+    // describes.
+    return { ...mapped, indexStatus: readIndexStatus() };
   });
 
   const searchContents: WorkspaceSearchIndex["Service"]["searchContents"] = Effect.fn(

@@ -32,9 +32,24 @@ export const ProjectEntry = Schema.Struct({
 });
 export type ProjectEntry = typeof ProjectEntry.Type;
 
+/**
+ * How much of the workspace the search index has read. A workspace large
+ * enough to outrun the index's startup budget is searched while its scan is
+ * still running, so results are drawn from the part already indexed and grow
+ * as the scan continues. A client that sees `isScanning` should say the list
+ * is incomplete and ask again until it clears.
+ */
+export const ProjectSearchIndexStatus = Schema.Struct({
+  isScanning: Schema.Boolean,
+  scannedFiles: NonNegativeInt,
+});
+export type ProjectSearchIndexStatus = typeof ProjectSearchIndexStatus.Type;
+
 export const ProjectSearchEntriesResult = Schema.Struct({
   entries: Schema.Array(ProjectEntry),
   truncated: Schema.Boolean,
+  /** Omitted by servers that do not report index progress. */
+  indexStatus: Schema.optional(ProjectSearchIndexStatus),
 });
 export type ProjectSearchEntriesResult = typeof ProjectSearchEntriesResult.Type;
 

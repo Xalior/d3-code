@@ -4,9 +4,10 @@ import type { ProjectEntry } from "@t3tools/contracts";
 import {
   buildFileTree,
   countFileNodes,
-  defaultExpandedTreePaths,
+  fileTreeEmptyState,
   firstFilePath,
   flattenFileTree,
+  workspaceSearchResultNodes,
 } from "./fileTree";
 
 const entries = [
@@ -52,58 +53,50 @@ describe("mobile file tree helpers", () => {
     ).toEqual(["src", "package.json", "README.md"]);
   });
 
-  it("includes matching descendants and their ancestors during search", () => {
-    const tree = buildFileTree(entries);
-
+  it("lists whole-workspace search results flat, under their full paths", () => {
     expect(
-      flattenFileTree({
-        nodes: tree,
-        expanded: new Set(),
-        searchQuery: "app",
-      }).map((item) => item.node.path),
-    ).toEqual(["src", "src/components", "src/components/App.tsx"]);
-  });
-
-  it("supports fuzzy, whitespace-separated path queries", () => {
-    const tree = buildFileTree([
+      workspaceSearchResultNodes([
+        { kind: "file", path: "src/components/App.tsx" },
+        { kind: "directory", path: "apps/web/src/components/chat" },
+      ]),
+    ).toEqual([
       {
-        kind: "file",
-        path: "docs/internals/workspace-layout.md",
+        node: {
+          path: "src/components/App.tsx",
+          name: "src/components/App.tsx",
+          kind: "file",
+          children: [],
+        },
+        depth: 0,
       },
       {
-        kind: "file",
-        path: ".repos/alchemy-effect/examples/aws-lambda/src/JobNotifications.ts",
+        node: {
+          path: "apps/web/src/components/chat",
+          name: "apps/web/src/components/chat",
+          kind: "directory",
+          children: [],
+        },
+        depth: 0,
       },
-      { kind: "directory", path: "apps/web/src/components/chat" },
-      { kind: "file", path: "apps/web/src/components/chat/ChatHeader.test.ts" },
-      { kind: "file", path: "apps/web/src/components/chat/ChatHeader.tsx" },
-      { kind: "file", path: "apps/web/src/components/chat/Composer.tsx" },
     ]);
-
-    const expectedPaths = [
-      "apps",
-      "apps/web",
-      "apps/web/src",
-      "apps/web/src/components",
-      "apps/web/src/components/chat",
-      "apps/web/src/components/chat/ChatHeader.test.ts",
-      "apps/web/src/components/chat/ChatHeader.tsx",
-    ];
-
-    for (const searchQuery of ["chat hea", "cht hdr"]) {
-      expect(
-        flattenFileTree({
-          nodes: tree,
-          expanded: new Set(),
-          searchQuery,
-        }).map((item) => item.node.path),
-      ).toEqual(expectedPaths);
-    }
   });
 
-  it("expands top-level directories by default", () => {
-    const tree = buildFileTree(entries);
-
-    expect([...defaultExpandedTreePaths(tree)]).toEqual(["src"]);
+  it("does not report a search still running as a search that found nothing", () => {
+    expect(
+      fileTreeEmptyState({ searchQuery: "app", searchError: null, searchIsPending: true }),
+    ).toEqual({ title: "Searching the workspace…", detail: null });
+    expect(
+      fileTreeEmptyState({ searchQuery: "app", searchError: null, searchIsPending: false }),
+    ).toEqual({ title: "No matching files", detail: "Try a different search." });
+    expect(
+      fileTreeEmptyState({ searchQuery: "  ", searchError: null, searchIsPending: false }),
+    ).toEqual({ title: "No files found", detail: "This workspace has no files." });
+    expect(
+      fileTreeEmptyState({
+        searchQuery: "app",
+        searchError: "Environment offline",
+        searchIsPending: false,
+      }),
+    ).toEqual({ title: "Search unavailable", detail: "Environment offline" });
   });
 });

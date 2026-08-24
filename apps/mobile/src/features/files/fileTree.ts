@@ -1,13 +1,10 @@
 import type { ProjectEntry } from "@t3tools/contracts";
-import { normalizeSearchQuery, scoreQueryMatch } from "@t3tools/shared/searchRanking";
 
 export interface FileTreeNode {
   readonly path: string;
   readonly name: string;
   readonly kind: ProjectEntry["kind"];
   readonly children: ReadonlyArray<FileTreeNode>;
-  readonly searchSegments: ReadonlyArray<string>;
-  readonly searchWords: ReadonlyArray<string>;
 }
 
 export interface VisibleFileTreeNode {
@@ -35,42 +32,12 @@ function createMutableNode(
   };
 }
 
-function splitSearchWords(value: string): ReadonlyArray<string> {
-  return value
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((word) => word.toLowerCase());
-}
-
-function buildNodeSearchTerms(path: string): {
-  readonly segments: ReadonlyArray<string>;
-  readonly words: ReadonlyArray<string>;
-} {
-  const segments: string[] = [];
-  const words: string[] = [];
-
-  for (const segment of path.split("/")) {
-    if (!segment) {
-      continue;
-    }
-    segments.push(segment.toLowerCase());
-    words.push(...splitSearchWords(segment));
-  }
-
-  return { segments, words };
-}
-
 function freezeNode(node: MutableFileTreeNode): FileTreeNode {
-  const searchTerms = buildNodeSearchTerms(node.path);
   return {
     path: node.path,
     name: node.name,
     kind: node.kind,
     children: [...node.children.values()].sort(compareNodes).map(freezeNode),
-    searchSegments: searchTerms.segments,
-    searchWords: searchTerms.words,
   };
 }
 
@@ -117,6 +84,42 @@ export function buildFileTree(entries: ReadonlyArray<ProjectEntry>): ReadonlyArr
   return [...root.children.values()].sort(compareNodes).map(freezeNode);
 }
 
+/**
+ * Turns whole-workspace search results into rows. Results come back from
+ * anywhere in the workspace in the server's ranked order, so they are listed
+ * flat under their full paths rather than folded into the browse tree, which
+ * only holds the directories the user has opened.
+ */
+export function workspaceSearchResultNodes(
+  entries: ReadonlyArray<ProjectEntry>,
+): ReadonlyArray<VisibleFileTreeNode> {
+  return entries.map((entry) => ({
+    node: { path: entry.path, name: entry.path, kind: entry.kind, children: [] },
+    depth: 0,
+  }));
+}
+
+/**
+ * What the tree says when it has no rows. A search that has not answered yet
+ * must not be reported as a search that found nothing.
+ */
+export function fileTreeEmptyState(input: {
+  readonly searchQuery: string;
+  readonly searchError: string | null;
+  readonly searchIsPending: boolean;
+}): { readonly title: string; readonly detail: string | null } {
+  if (input.searchQuery.trim().length === 0) {
+    return { title: "No files found", detail: "This workspace has no files." };
+  }
+  if (input.searchError !== null) {
+    return { title: "Search unavailable", detail: input.searchError };
+  }
+  if (input.searchIsPending) {
+    return { title: "Searching the workspace…", detail: null };
+  }
+  return { title: "No matching files", detail: "Try a different search." };
+}
+
 export function countFileNodes(nodes: ReadonlyArray<FileTreeNode>): number {
   let count = 0;
   for (const node of nodes) {
@@ -129,79 +132,27 @@ export function countFileNodes(nodes: ReadonlyArray<FileTreeNode>): number {
   return count;
 }
 
-export function defaultExpandedTreePaths(nodes: ReadonlyArray<FileTreeNode>): ReadonlySet<string> {
-  const expanded = new Set<string>();
-  for (const node of nodes) {
-    if (node.kind === "directory") {
-      expanded.add(node.path);
-    }
-  }
-  return expanded;
-}
-
-function valueMatchesSearchToken(value: string, token: string, fuzzy: boolean): boolean {
-  return (
-    scoreQueryMatch({
-      value,
-      query: token,
-      exactBase: 0,
-      prefixBase: 2,
-      boundaryBase: 4,
-      includesBase: 6,
-      ...(fuzzy ? { fuzzyBase: 100 } : {}),
-      boundaryMarkers: ["/", "-", "_", "."],
-    }) !== null
-  );
-}
-
-function nodeMatchesSearch(node: FileTreeNode, tokens: ReadonlyArray<string>): boolean {
-  return tokens.every(
-    (token) =>
-      node.searchSegments.some((segment) => valueMatchesSearchToken(segment, token, false)) ||
-      node.searchWords.some((word) => valueMatchesSearchToken(word, token, true)),
-  );
-}
-
 function flattenNode(
   output: VisibleFileTreeNode[],
   node: FileTreeNode,
   depth: number,
   expanded: ReadonlySet<string>,
-  searchTokens: ReadonlyArray<string>,
-): boolean {
-  const isSearching = searchTokens.length > 0;
-  const matches = isSearching && nodeMatchesSearch(node, searchTokens);
-  let descendantMatches = false;
-  const childOutput: VisibleFileTreeNode[] = [];
-
-  if (node.kind === "directory" && (expanded.has(node.path) || isSearching)) {
-    for (const child of node.children) {
-      if (flattenNode(childOutput, child, depth + 1, expanded, searchTokens)) {
-        descendantMatches = true;
-      }
-    }
-  }
-
-  const visible = !isSearching || matches || descendantMatches;
-  if (!visible) {
-    return false;
-  }
-
+): void {
   output.push({ node, depth });
-  output.push(...childOutput);
-  return matches || descendantMatches;
+  if (node.kind !== "directory" || !expanded.has(node.path)) return;
+  for (const child of node.children) {
+    flattenNode(output, child, depth + 1, expanded);
+  }
 }
 
+/** The rows of the browse tree: the root's children, plus everything below an open directory. */
 export function flattenFileTree(input: {
   readonly nodes: ReadonlyArray<FileTreeNode>;
   readonly expanded: ReadonlySet<string>;
-  readonly searchQuery?: string;
 }): ReadonlyArray<VisibleFileTreeNode> {
   const output: VisibleFileTreeNode[] = [];
-  const normalizedSearch = normalizeSearchQuery(input.searchQuery ?? "");
-  const searchTokens = normalizedSearch.split(/[\s/\\._-]+/).filter(Boolean);
   for (const node of input.nodes) {
-    flattenNode(output, node, 0, input.expanded, searchTokens);
+    flattenNode(output, node, 0, input.expanded);
   }
   return output;
 }

@@ -3,10 +3,10 @@ import type {
   ContextMenuOpenContext as TreeContextMenuOpenContext,
 } from "@pierre/trees";
 import type { EnvironmentId, ProjectEntry } from "@t3tools/contracts";
-import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { RotateCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupInput } from "~/components/ui/input-group";
@@ -19,8 +19,21 @@ import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
 
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
+
+import {
+  ancestorDirectoryPaths,
+  directoryRestoreOrder,
+  treePath,
+  walkOpenDirectories,
+  WORKSPACE_ROOT_DIRECTORY_PATH,
+} from "./fileTreeDirectories";
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
-import { loadProjectDirectory, useProjectDirectoryQuery } from "./projectFilesQueryState";
+import {
+  loadProjectDirectory,
+  useProjectDirectoryQuery,
+  useWorkspaceEntrySearch,
+} from "./projectFilesQueryState";
 
 interface FileBrowserPanelProps {
   environmentId: EnvironmentId;
@@ -45,25 +58,6 @@ const TREE_UNSAFE_CSS = `
   }
   button[data-type='item'] { border-radius: 5px; }
 `;
-
-/** The workspace root is addressed by an empty relative path. */
-const WORKSPACE_ROOT_DIRECTORY_PATH = "";
-
-function treePath(entry: ProjectEntry): string {
-  return entry.kind === "directory" ? `${entry.path}/` : entry.path;
-}
-
-/** Workspace-root-relative paths of every directory containing the given path, outermost first. */
-function ancestorDirectoryPaths(relativePath: string): readonly string[] {
-  const segments = relativePath.split("/").slice(0, -1);
-  const ancestors: string[] = [];
-  let ancestorPath = "";
-  for (const segment of segments) {
-    ancestorPath = ancestorPath ? `${ancestorPath}/${segment}` : segment;
-    ancestors.push(ancestorPath);
-  }
-  return ancestors;
-}
 
 function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }) {
   return (
@@ -114,6 +108,59 @@ function FileSearchField(props: {
   );
 }
 
+/**
+ * The workspace index reads a large workspace in the background, so a search
+ * that lands mid-scan is answered from part of the workspace. Saying how much
+ * has been read is the difference between "no matches" and "no matches yet".
+ */
+function IndexingNotice(props: { scannedFiles: number }) {
+  return (
+    <div className="px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+      {`Still indexing this workspace. ${props.scannedFiles.toLocaleString()} files so far, and results improve as it reads.`}
+    </div>
+  );
+}
+
+/**
+ * Search results replace the tree rather than filtering it. The tree holds
+ * only the directories the user has opened, so a match anywhere else has no
+ * row to reveal, and the server returns results in its own ranked order that a
+ * tree would sort away.
+ */
+function WorkspaceSearchResults(props: {
+  entries: readonly ProjectEntry[];
+  error: string | null;
+  isPending: boolean;
+  onOpenEntry: (entry: ProjectEntry) => void;
+  theme: "light" | "dark";
+}) {
+  if (props.error) {
+    return <div className="p-4 text-xs leading-relaxed text-destructive">{props.error}</div>;
+  }
+  if (props.entries.length === 0) {
+    return (
+      <div className="p-4 text-xs leading-relaxed text-muted-foreground">
+        {props.isPending ? "Searching workspace…" : "No matching files."}
+      </div>
+    );
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-1">
+      {props.entries.map((entry) => (
+        <button
+          key={`${entry.kind}:${entry.path}`}
+          type="button"
+          className="flex w-full items-center gap-1.5 rounded-[5px] px-1.5 py-1 text-left text-xs hover:bg-accent/60"
+          onClick={() => props.onOpenEntry(entry)}
+        >
+          <PierreEntryIcon pathValue={entry.path} kind={entry.kind} theme={props.theme} />
+          <span className="min-w-0 flex-1 truncate text-foreground">{entry.path}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function FileBrowserPanel({
   environmentId,
   cwd,
@@ -130,9 +177,12 @@ export default function FileBrowserPanel({
   // about the workspace grows between renders rather than being derived from
   // one. It lives in refs; the tree itself is what the user sees change.
   const entryKindsRef = useRef<Map<string, ProjectEntry["kind"]>>(new Map());
-  const loadedDirectoriesRef = useRef<Set<string>>(new Set());
-  const unloadedDirectoriesRef = useRef<Set<string>>(new Set());
-  const inFlightDirectoriesRef = useRef<Map<string, Promise<void>>>(new Map());
+  /** Child directories of each directory whose listing has arrived, keyed by that directory. */
+  const directoryChildrenRef = useRef<Map<string, readonly string[]>>(new Map());
+  const readDirectoriesRef = useRef<Set<string>>(new Set());
+  /** Directories the tree holds open, as of the last walk. A refresh reopens these. */
+  const expandedDirectoriesRef = useRef<Set<string>>(new Set());
+  const inFlightDirectoriesRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const syncingSelectionRef = useRef(false);
   const treeSelectionPathRef = useRef<string | null>(null);
   const handledRevealRef = useRef<{ path: string; revealId: number } | null>(null);
@@ -262,40 +312,39 @@ export default function FileBrowserPanel({
     search: false,
     unsafeCSS: TREE_UNSAFE_CSS,
   });
-  const search = useFileTreeSearch(model);
-  const handleSearchValueChange = (value: string) => {
-    if (value.trim().length === 0) {
-      search.close();
-      return;
-    }
-    search.setValue(value);
-  };
-  const registerEntries = useCallback((entries: readonly ProjectEntry[]) => {
-    for (const entry of entries) {
-      entryKindsRef.current.set(entry.path, entry.kind);
-      if (entry.kind === "directory" && !loadedDirectoriesRef.current.has(entry.path)) {
-        unloadedDirectoriesRef.current.add(entry.path);
+  const [searchQuery, setSearchQuery] = useState("");
+  const isSearching = searchQuery.trim().length > 0;
+  const entrySearch = useWorkspaceEntrySearch(environmentId, cwd, searchQuery);
+  const registerDirectory = useCallback(
+    (relativePath: string, entries: readonly ProjectEntry[]) => {
+      const childDirectories: string[] = [];
+      for (const entry of entries) {
+        entryKindsRef.current.set(entry.path, entry.kind);
+        if (entry.kind === "directory") childDirectories.push(entry.path);
       }
-    }
-  }, []);
+      directoryChildrenRef.current.set(relativePath, childDirectories);
+      readDirectoriesRef.current.add(relativePath);
+    },
+    [],
+  );
 
-  // Reads one directory and grafts its children onto the tree. Callers racing
-  // for the same directory share the one request, so an expand that coincides
-  // with a reveal does not read it twice.
+  // Reads one directory, grafts its children onto the tree, and reports whether
+  // the directory could be read at all. Callers racing for the same directory
+  // share the one request, so an expand that coincides with a reveal does not
+  // read it twice.
   const loadDirectory = useCallback(
-    (relativePath: string): Promise<void> => {
-      if (loadedDirectoriesRef.current.has(relativePath)) return Promise.resolve();
+    (relativePath: string): Promise<boolean> => {
+      if (readDirectoriesRef.current.has(relativePath)) return Promise.resolve(true);
       const inFlight = inFlightDirectoriesRef.current.get(relativePath);
       if (inFlight) return inFlight;
       const request = loadProjectDirectory(environmentId, cwd, relativePath)
         .then((result) => {
-          if (result === null) return;
-          loadedDirectoriesRef.current.add(relativePath);
-          unloadedDirectoriesRef.current.delete(relativePath);
-          registerEntries(result.entries);
+          if (result === null) return false;
+          registerDirectory(relativePath, result.entries);
           model.batch(
             result.entries.map((entry) => ({ path: treePath(entry), type: "add" as const })),
           );
+          return true;
         })
         .finally(() => {
           inFlightDirectoriesRef.current.delete(relativePath);
@@ -303,7 +352,53 @@ export default function FileBrowserPanel({
       inFlightDirectoriesRef.current.set(relativePath, request);
       return request;
     },
-    [cwd, environmentId, model, registerEntries],
+    [cwd, environmentId, model, registerDirectory],
+  );
+
+  // Reopens the directories the tree held open before it was rebuilt, outermost
+  // first. A directory that no longer reads — deleted from disk between
+  // refreshes — takes its own branch out of the reopen and leaves the rest of
+  // the tree standing.
+  const restoreExpandedDirectories = useCallback(
+    async (directoryPaths: readonly string[], isCancelled: () => boolean) => {
+      const goneDirectoryPaths: string[] = [];
+      for (const directoryPath of directoryPaths) {
+        if (goneDirectoryPaths.some((gonePath) => directoryPath.startsWith(`${gonePath}/`))) {
+          continue;
+        }
+        const read = await loadDirectory(directoryPath);
+        if (isCancelled()) return;
+        if (!read) {
+          goneDirectoryPaths.push(directoryPath);
+          continue;
+        }
+        const item = model.getItem(`${directoryPath}/`);
+        if (item !== null && "expand" in item) item.expand();
+      }
+    },
+    [loadDirectory, model],
+  );
+
+  // A file result opens in the preview pane and leaves the results up, so the
+  // next result is one click away. A directory has nothing to preview, so it
+  // hands the user back to the tree with that directory read and open.
+  const handleOpenSearchResult = useCallback(
+    (entry: ProjectEntry) => {
+      if (entry.kind === "file") {
+        onOpenFile(entry.path);
+        return;
+      }
+      setSearchQuery("");
+      void (async () => {
+        for (const directoryPath of [...ancestorDirectoryPaths(entry.path), entry.path]) {
+          if (!(await loadDirectory(directoryPath))) return;
+          const item = model.getItem(`${directoryPath}/`);
+          if (item !== null && "expand" in item) item.expand();
+        }
+        model.scrollToPath(`${entry.path}/`, { offset: "center" });
+      })();
+    },
+    [loadDirectory, model, onOpenFile],
   );
 
   const handleRefresh = () => {
@@ -311,35 +406,66 @@ export default function FileBrowserPanel({
     onRefreshSelectedFile?.();
   };
 
-  // The workspace root's own children seed the tree. A refresh re-seeds it,
-  // which drops every directory paged in below and lets the user open the ones
-  // they still want.
+  // The workspace root's own children seed the tree; everything below it is
+  // paged in as directories open. A refresh re-reads the root, rebuilds from
+  // it, and reopens what the user had open.
   useEffect(() => {
     const rootEntries = rootQuery.data?.entries;
     if (rootEntries === undefined) return;
-    entryKindsRef.current = new Map(rootEntries.map((entry) => [entry.path, entry.kind]));
-    loadedDirectoriesRef.current = new Set([WORKSPACE_ROOT_DIRECTORY_PATH]);
-    unloadedDirectoriesRef.current = new Set(
-      rootEntries.flatMap((entry) => (entry.kind === "directory" ? [entry.path] : [])),
-    );
+    const reopenPaths = directoryRestoreOrder(expandedDirectoriesRef.current);
+    entryKindsRef.current = new Map();
+    directoryChildrenRef.current = new Map();
+    readDirectoriesRef.current = new Set();
+    expandedDirectoriesRef.current = new Set();
     inFlightDirectoriesRef.current = new Map();
+    registerDirectory(WORKSPACE_ROOT_DIRECTORY_PATH, rootEntries);
     model.resetPaths(rootEntries.map(treePath));
-  }, [model, rootQuery.data]);
+    if (reopenPaths.length === 0) return;
+    let cancelled = false;
+    void restoreExpandedDirectories(reopenPaths, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [model, registerDirectory, restoreExpandedDirectories, rootQuery.data]);
 
-  // The tree has no "children wanted" callback, so expansion is observed
-  // instead: every controller notification is a chance for a directory the
-  // panel has not read yet to have just been opened.
+  // `@pierre/trees` drops expand and collapse from onMutation, so nothing
+  // announces that a directory was opened and the tree has to be read back.
+  // Each controller notification schedules one walk on the next frame, so a
+  // burst of them, such as a run of selection changes, costs a single pass,
+  // and that pass covers the open part of the tree rather than every directory
+  // the panel has discovered.
   useEffect(() => {
-    const loadExpandedDirectories = () => {
-      for (const directoryPath of unloadedDirectoriesRef.current) {
-        const item = model.getItem(`${directoryPath}/`);
-        if (item !== null && "isExpanded" in item && item.isExpanded()) {
-          void loadDirectory(directoryPath);
-        }
+    let scheduledFrame: number | null = null;
+    const walkTree = () => {
+      scheduledFrame = null;
+      const walk = walkOpenDirectories({
+        childDirectories: (directoryPath) => directoryChildrenRef.current.get(directoryPath) ?? [],
+        isExpanded: (directoryPath) => {
+          const item = model.getItem(`${directoryPath}/`);
+          return item !== null && "isExpanded" in item && item.isExpanded();
+        },
+        isRead: (directoryPath) => readDirectoriesRef.current.has(directoryPath),
+      });
+      for (const directoryPath of walk.closedPaths) {
+        expandedDirectoriesRef.current.delete(directoryPath);
+      }
+      for (const directoryPath of walk.openPaths) {
+        expandedDirectoriesRef.current.add(directoryPath);
+      }
+      for (const directoryPath of walk.unreadPaths) {
+        void loadDirectory(directoryPath);
       }
     };
-    loadExpandedDirectories();
-    return model.subscribe(loadExpandedDirectories);
+    const scheduleWalk = () => {
+      if (scheduledFrame !== null) return;
+      scheduledFrame = requestAnimationFrame(walkTree);
+    };
+    scheduleWalk();
+    const unsubscribe = model.subscribe(scheduleWalk);
+    return () => {
+      if (scheduledFrame !== null) cancelAnimationFrame(scheduledFrame);
+      unsubscribe();
+    };
   }, [loadDirectory, model]);
 
   useEffect(() => {
@@ -347,6 +473,10 @@ export default function FileBrowserPanel({
       handledRevealRef.current = null;
       return;
     }
+    // The tree is not on screen while search results are, and revealing into a
+    // hidden tree would take focus off the search field. The reveal is left
+    // outstanding and runs when the results are dismissed.
+    if (isSearching) return;
     const revealRequest = { path: selectedPath, revealId: selectedPathRevealId };
     const handledReveal = handledRevealRef.current;
     // A refresh re-seeds the tree while the same preview stays open. Replaying
@@ -371,10 +501,10 @@ export default function FileBrowserPanel({
       const selectedItem = model.getItem(selectedPath);
       if (!selectedItem) return;
 
-      // A selection that originated inside the tree (clicking a row, possibly
-      // in an active tree search) is already visible; re-revealing it would
-      // close the search and clobber the user's context. Only sync external
-      // opens (file picker, content search, chat links).
+      // A selection that originated inside the tree (clicking a row) is
+      // already visible; re-revealing it would scroll the tree out from under
+      // the user. Only sync external opens (file picker, content search, chat
+      // links).
       const selectedInTree = model
         .getSelectedPaths()
         .some((path) => path.replace(/\/$/, "") === selectedPath);
@@ -385,7 +515,6 @@ export default function FileBrowserPanel({
       treeSelectionPathRef.current = null;
 
       syncingSelectionRef.current = true;
-      model.closeSearch();
       for (const path of model.getSelectedPaths()) {
         model.getItem(path)?.deselect();
       }
@@ -407,7 +536,7 @@ export default function FileBrowserPanel({
     return () => {
       cancelled = true;
     };
-  }, [loadDirectory, model, selectedPath, selectedPathRevealId]);
+  }, [isSearching, loadDirectory, model, selectedPath, selectedPathRevealId]);
 
   // Tag tree drags with the composer mention payload. The row is read from
   // the composed event path (the tree's shadow root is open), so this does
@@ -448,13 +577,24 @@ export default function FileBrowserPanel({
         <FileSearchField
           name="project-files-search"
           ariaLabel={`Search ${projectName} files`}
-          value={search.value}
-          onValueChange={handleSearchValueChange}
-          onClose={search.close}
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          onClose={() => setSearchQuery("")}
         />
       </div>
-      {rootQuery.error && rootQuery.data === null ? (
+      {isSearching && entrySearch.indexStatus?.isScanning === true ? (
+        <IndexingNotice scannedFiles={entrySearch.indexStatus.scannedFiles} />
+      ) : null}
+      {rootQuery.error && rootQuery.data === null && !isSearching ? (
         <div className="p-4 text-xs leading-relaxed text-destructive">{rootQuery.error}</div>
+      ) : isSearching ? (
+        <WorkspaceSearchResults
+          entries={entrySearch.entries}
+          error={entrySearch.error}
+          isPending={entrySearch.isPending}
+          onOpenEntry={handleOpenSearchResult}
+          theme={resolvedTheme}
+        />
       ) : (
         <FileTree
           model={model}

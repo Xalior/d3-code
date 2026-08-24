@@ -155,6 +155,29 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         expect(linked.entries).toEqual([{ path: "game/toolchains/arm", kind: "directory" }]);
       }),
     );
+
+    it.effect("fails only the directory that has gone, leaving the rest listable", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        yield* writeTextFile(cwd, "src/index.ts");
+        yield* writeTextFile(cwd, "docs/readme.md");
+        yield* fileSystem.remove(path.join(cwd, "docs"), { recursive: true });
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+
+        // The file tree reopens directories one at a time after a refresh, so a
+        // directory deleted since the last one has to fail on its own.
+        const error = yield* workspaceEntries
+          .listDirectory({ cwd, relativePath: "docs" })
+          .pipe(Effect.flip);
+        expect(error._tag).toBe("WorkspaceEntriesListDirectoryFailedError");
+
+        const sibling = yield* workspaceEntries.listDirectory({ cwd, relativePath: "src" });
+        expect(sibling.entries).toEqual([{ path: "src/index.ts", kind: "file" }]);
+      }),
+    );
   });
 
   describe("search", () => {

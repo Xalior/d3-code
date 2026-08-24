@@ -1,4 +1,4 @@
-import type { ProjectEntry } from "@t3tools/contracts";
+import type { ProjectEntry, ProjectSearchIndexStatus } from "@t3tools/contracts";
 import { SymbolView } from "../../components/AppSymbol";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, View } from "react-native";
@@ -12,8 +12,9 @@ import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import {
   buildFileTree,
-  defaultExpandedTreePaths,
+  fileTreeEmptyState,
   flattenFileTree,
+  workspaceSearchResultNodes,
   type FileTreeNode,
   type VisibleFileTreeNode,
 } from "./fileTree";
@@ -31,15 +32,6 @@ function cachedFileTree(entries: ReadonlyArray<ProjectEntry>): ReadonlyArray<Fil
   const tree = buildFileTree(entries);
   fileTreeCache.set(entries, tree);
   return tree;
-}
-
-function ancestorPaths(path: string): ReadonlyArray<string> {
-  const parts = path.split("/").filter(Boolean);
-  const ancestors: string[] = [];
-  for (let index = 1; index < parts.length; index += 1) {
-    ancestors.push(parts.slice(0, index).join("/"));
-  }
-  return ancestors;
 }
 
 const FileTreeRow = memo(function FileTreeRow(props: {
@@ -97,7 +89,7 @@ const FileTreeRow = memo(function FileTreeRow(props: {
       >
         {node.name}
       </Text>
-      {node.kind === "directory" ? (
+      {node.kind === "directory" && node.children.length > 0 ? (
         <Text className="text-2xs font-t3-medium text-foreground-tertiary">
           {node.children.length}
         </Text>
@@ -108,15 +100,27 @@ const FileTreeRow = memo(function FileTreeRow(props: {
 
 export function FileTreeBrowser(props: {
   readonly entries: ReadonlyArray<ProjectEntry>;
+  /**
+   * Directories the tree shows open. The workspace is read one directory at a
+   * time, so whoever owns this set also owns which listings get asked for.
+   */
+  readonly expandedPaths: ReadonlySet<string>;
   readonly error: string | null;
   readonly isPending: boolean;
   readonly searchQuery: string;
+  /** Whole-workspace matches for the current query, in the order the server ranked them. */
+  readonly searchEntries: ReadonlyArray<ProjectEntry>;
+  readonly searchError: string | null;
+  readonly searchIsPending: boolean;
+  /** How far the workspace index has read, while it is still reading. */
+  readonly searchIndexStatus: ProjectSearchIndexStatus | null;
   readonly selectedPath: string | null;
   readonly onPreviewFile?: (path: string) => void;
   readonly onRefresh: () => void;
+  readonly onRevealDirectory: (path: string) => void;
   readonly onSelectFile: (path: string) => void;
+  readonly onToggleDirectory: (path: string) => void;
 }) {
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingSelection, setPendingSelection] = useState<{
     readonly path: string;
     readonly selectedPathAtPress: string | null;
@@ -126,7 +130,13 @@ export function FileTreeBrowser(props: {
   // observed adjustedContentInset bottom (~102) seen in the native trace.
   const headerInset = NATIVE_LIQUID_GLASS_SUPPORTED ? insets.top + IOS_NAV_BAR_HEIGHT : 0;
   const iconColor = String(useThemeColor("--color-icon-muted"));
-  const { onPreviewFile, onSelectFile, selectedPath: controlledSelectedPath } = props;
+  const {
+    expandedPaths,
+    onPreviewFile,
+    onSelectFile,
+    onToggleDirectory,
+    selectedPath: controlledSelectedPath,
+  } = props;
   const controlledSelectedPathRef = useRef(controlledSelectedPath);
   const pendingSelectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   controlledSelectedPathRef.current = controlledSelectedPath;
@@ -135,43 +145,18 @@ export function FileTreeBrowser(props: {
     pendingSelection?.selectedPathAtPress === controlledSelectedPath
       ? pendingSelection.path
       : controlledSelectedPath;
+  const isSearching = props.searchQuery.trim().length > 0;
   const tree = useMemo(() => cachedFileTree(props.entries), [props.entries]);
-  const defaultExpanded = useMemo(() => defaultExpandedTreePaths(tree), [tree]);
+  // Search results replace the tree rather than filtering it: the tree holds
+  // only the directories the user has opened, so a match anywhere else has no
+  // row to show, and the server's ranking would be sorted away by a tree.
   const visibleNodes = useMemo(
     () =>
-      flattenFileTree({
-        nodes: tree,
-        expanded: expandedPaths,
-        searchQuery: props.searchQuery,
-      }),
-    [expandedPaths, props.searchQuery, tree],
+      isSearching
+        ? workspaceSearchResultNodes(props.searchEntries)
+        : flattenFileTree({ nodes: tree, expanded: expandedPaths }),
+    [expandedPaths, isSearching, props.searchEntries, tree],
   );
-
-  useEffect(() => {
-    setExpandedPaths((current) => {
-      if (current.size > 0 || defaultExpanded.size === 0) {
-        return current;
-      }
-      return new Set(defaultExpanded);
-    });
-  }, [defaultExpanded]);
-
-  useEffect(() => {
-    if (!controlledSelectedPath) {
-      return;
-    }
-    setExpandedPaths((current) => {
-      const ancestors = ancestorPaths(controlledSelectedPath);
-      if (ancestors.every((ancestor) => current.has(ancestor))) {
-        return current;
-      }
-      const next = new Set(current);
-      for (const ancestor of ancestors) {
-        next.add(ancestor);
-      }
-      return next;
-    });
-  }, [controlledSelectedPath]);
 
   useEffect(
     () => () => {
@@ -182,17 +167,6 @@ export function FileTreeBrowser(props: {
     [],
   );
 
-  const toggleDirectory = useCallback((path: string) => {
-    setExpandedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
   const handleSelectFile = useCallback(
     (path: string) => {
       if (pendingSelectionTimeoutRef.current !== null) {
@@ -210,22 +184,40 @@ export function FileTreeBrowser(props: {
     },
     [onSelectFile],
   );
+  // A result row is not a row of the tree, so a directory among the results
+  // hands the user back to the tree with that directory open instead of
+  // toggling a row they cannot see.
+  const { onRevealDirectory } = props;
   const renderItem = useCallback(
     ({ item }: { readonly item: VisibleFileTreeNode }) => (
       <FileTreeRow
         item={item}
         selected={item.node.kind === "file" && item.node.path === selectedPath}
-        expanded={expandedPaths.has(item.node.path)}
+        expanded={!isSearching && expandedPaths.has(item.node.path)}
         iconColor={iconColor}
-        onPressDirectory={toggleDirectory}
+        onPressDirectory={isSearching ? onRevealDirectory : onToggleDirectory}
         onPreviewFile={onPreviewFile}
         onPressFile={handleSelectFile}
       />
     ),
-    [expandedPaths, handleSelectFile, iconColor, onPreviewFile, selectedPath, toggleDirectory],
+    [
+      expandedPaths,
+      handleSelectFile,
+      iconColor,
+      isSearching,
+      onPreviewFile,
+      onRevealDirectory,
+      onToggleDirectory,
+      selectedPath,
+    ],
   );
+  const emptyState = fileTreeEmptyState({
+    searchQuery: props.searchQuery,
+    searchError: props.searchError,
+    searchIsPending: props.searchIsPending,
+  });
 
-  if (props.error && props.entries.length === 0) {
+  if (props.error && props.entries.length === 0 && !isSearching) {
     return (
       <View className="flex-1 bg-sheet px-4 py-5">
         <Text className="text-sm font-t3-bold text-foreground">Files unavailable</Text>
@@ -259,18 +251,27 @@ export function FileTreeBrowser(props: {
       contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
       refreshControl={<RefreshControl refreshing={props.isPending} onRefresh={props.onRefresh} />}
       renderItem={renderItem}
+      ListHeaderComponent={
+        isSearching && props.searchIndexStatus?.isScanning === true ? (
+          <View className="px-4 pb-2">
+            <Text className="text-xs leading-normal text-foreground-muted">
+              {`Still indexing this workspace. ${props.searchIndexStatus.scannedFiles.toLocaleString()} files so far, and results improve as it reads.`}
+            </Text>
+          </View>
+        ) : null
+      }
       ListEmptyComponent={
         <View className="px-4 py-5">
           {props.isPending ? (
             <ActivityIndicator size="small" />
           ) : (
             <>
-              <Text className="text-sm font-t3-bold text-foreground">No files found</Text>
-              <Text className="mt-1 text-xs leading-normal text-foreground-muted">
-                {props.searchQuery.trim().length > 0
-                  ? "Try a different search."
-                  : "The workspace file index is empty."}
-              </Text>
+              <Text className="text-sm font-t3-bold text-foreground">{emptyState.title}</Text>
+              {emptyState.detail === null ? null : (
+                <Text className="mt-1 text-xs leading-normal text-foreground-muted">
+                  {emptyState.detail}
+                </Text>
+              )}
             </>
           )}
         </View>
