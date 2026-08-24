@@ -12,9 +12,10 @@ d3-code is a working fork of [T3 Code](https://github.com/pingdotgg/t3code). It 
 
 ## Fixes carried here
 
-Each fix lives on its own branch and lists the upstream tickets it covers, so when a ticket closes the fix can be dropped and the branch retired.
+Each fix lives on its own branch and lists the upstream ticket or pull request it covers, so when one lands the fix can be dropped and the branch retired.
 
 - [t3code#4640](https://github.com/pingdotgg/t3code/issues/4640) - `fix/file-tree-large-workspaces` - Files panel reads one directory at a time through a new `projects.listDirectory` request rather than indexing the whole workspace, and opens symlinked directories. No upstream ticket covers the workspace scan timeout this also addresses.
+- [t3code#8129](https://github.com/pingdotgg/t3code/pull/8129) - `fix/file-tree-header-inset` - The mobile file tree no longer scrolls under the translucent header. The inset that compensates for the header was only calculated on iOS 26, so on earlier versions rows sat underneath it. Submitted upstream.
 
 ---
 
