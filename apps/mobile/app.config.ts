@@ -225,9 +225,12 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
-  // Over-the-air updates are served from the owning EAS project. d3-code has
-  // none, so there is nothing to check and checking would only fail.
-  updates: { enabled: false },
+  updates: {
+    enabled: true,
+    url: "https://u.expo.dev/1ec4e0c1-1cd9-4538-bdd8-36564d924217",
+    checkAutomatically: "ON_LOAD",
+    fallbackToCacheTimeout: 0,
+  },
   ios: {
     icon: variant.assets.iosIcon,
     supportsTablet: true,
@@ -421,7 +424,15 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
+    // d3-code's own EAS project. Updates are served from the project that owns
+    // the app, so this and the updates URL above have to name the same one:
+    // pointing either at another account's project makes the development
+    // server fail to produce a manifest at all.
+    eas: {
+      projectId: "1ec4e0c1-1cd9-4538-bdd8-36564d924217",
+    },
   },
+  owner: "xalior",
 };
 
 export default config;
