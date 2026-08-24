@@ -29,6 +29,39 @@ export const BRAND_ASSET_PATHS = {
   developmentWebFavicon16Png: "assets/dev/blueprint-web-favicon-16x16.png",
   developmentWebFavicon32Png: "assets/dev/blueprint-web-favicon-32x32.png",
   developmentWebAppleTouchIconPng: "assets/dev/blueprint-web-apple-touch-180.png",
+
+  // d3-code carries its own identity so it installs alongside T3 Code rather
+  // than replacing it. Each channel has one Icon Composer project and the rest
+  // of its files are generated from it by scripts/export-brand-icons.ts.
+  d3DevelopmentIconComposerProject: "assets/d3/dev/app-icon.icon",
+  d3DevelopmentIosIconPng: "assets/d3/dev/d3-ios-1024.png",
+  d3DevelopmentMacIconPng: "assets/d3/dev/d3-macos-1024.png",
+  d3DevelopmentUniversalIconPng: "assets/d3/dev/d3-universal-1024.png",
+  d3DevelopmentWindowsIconIco: "assets/d3/dev/d3-windows.ico",
+  d3DevelopmentWebFaviconIco: "assets/d3/dev/d3-web-favicon.ico",
+  d3DevelopmentWebFavicon16Png: "assets/d3/dev/d3-web-favicon-16x16.png",
+  d3DevelopmentWebFavicon32Png: "assets/d3/dev/d3-web-favicon-32x32.png",
+  d3DevelopmentWebAppleTouchIconPng: "assets/d3/dev/d3-web-apple-touch-180.png",
+
+  d3NightlyIconComposerProject: "assets/d3/nightly/app-icon.icon",
+  d3NightlyIosIconPng: "assets/d3/nightly/d3-ios-1024.png",
+  d3NightlyMacIconPng: "assets/d3/nightly/d3-macos-1024.png",
+  d3NightlyUniversalIconPng: "assets/d3/nightly/d3-universal-1024.png",
+  d3NightlyWindowsIconIco: "assets/d3/nightly/d3-windows.ico",
+  d3NightlyWebFaviconIco: "assets/d3/nightly/d3-web-favicon.ico",
+  d3NightlyWebFavicon16Png: "assets/d3/nightly/d3-web-favicon-16x16.png",
+  d3NightlyWebFavicon32Png: "assets/d3/nightly/d3-web-favicon-32x32.png",
+  d3NightlyWebAppleTouchIconPng: "assets/d3/nightly/d3-web-apple-touch-180.png",
+
+  d3ProductionIconComposerProject: "assets/d3/prod/app-icon.icon",
+  d3ProductionIosIconPng: "assets/d3/prod/d3-ios-1024.png",
+  d3ProductionMacIconPng: "assets/d3/prod/d3-macos-1024.png",
+  d3ProductionUniversalIconPng: "assets/d3/prod/d3-universal-1024.png",
+  d3ProductionWindowsIconIco: "assets/d3/prod/d3-windows.ico",
+  d3ProductionWebFaviconIco: "assets/d3/prod/d3-web-favicon.ico",
+  d3ProductionWebFavicon16Png: "assets/d3/prod/d3-web-favicon-16x16.png",
+  d3ProductionWebFavicon32Png: "assets/d3/prod/d3-web-favicon-32x32.png",
+  d3ProductionWebAppleTouchIconPng: "assets/d3/prod/d3-web-apple-touch-180.png",
 } as const;
 
 export type WebAssetBrand = "development" | "nightly" | "production";

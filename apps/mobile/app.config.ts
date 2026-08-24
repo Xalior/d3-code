@@ -26,6 +26,17 @@ if (
   );
 }
 
+// d3-code installs beside T3 Code rather than replacing it, so every channel
+// carries its own identifier, name and URL scheme.
+//
+// The app declares no Expo account and no EAS project. Claiming upstream's is
+// not harmless: the development server asks Expo's API about the declared
+// project before it will serve a manifest, that query returns nothing for an
+// account we are not a member of, and the dev client gets a 500 with no hint
+// that ownership is the reason.
+// Upstream's own asset sets. Kept as the reference for what a d3-code
+// channel still needs its own version of, the Android marks and colours in
+// particular, which have not been drawn yet. Unused by the variants below.
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
@@ -59,30 +70,71 @@ const RELEASE_ASSETS = {
   androidNotificationColor: "#FFFFFF",
 } as const;
 
+const D3_DEVELOPMENT_ASSETS = {
+  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIconComposerProject),
+  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
+  androidMonochromeIcon: "./assets/android-icon-mark.png",
+  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidNotificationColor: "#FFFFFF",
+} as const;
+
+const D3_PREVIEW_ASSETS = {
+  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIconComposerProject),
+  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIosIconPng),
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
+  androidMonochromeIcon: "./assets/android-icon-mark.png",
+  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidNotificationColor: "#FFFFFF",
+} as const;
+
+const D3_RELEASE_ASSETS = {
+  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIconComposerProject),
+  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIosIconPng),
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
+  androidMonochromeIcon: "./assets/android-icon-mark.png",
+  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidNotificationColor: "#FFFFFF",
+} as const;
+
+// This branch builds d3-code, so the channels carry the d3-code identity and
+// nothing has to be passed at the command line to get it. Upstream's own
+// identifiers stay on the branches that carry upstream's work.
+//
+// relyingParty is deliberately absent. Associated domains require Apple to
+// fetch an apple-app-site-association file naming the bundle from the domain,
+// and clerk.t3.codes is not ours to publish to, so claiming it would fail
+// quietly. Custom-scheme links, which pairing uses, are unaffected.
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
-    scheme: "t3code-dev",
-    iosBundleIdentifier: "com.t3tools.t3code.dev",
-    androidPackage: "com.t3tools.t3code.dev",
-    relyingParty: "clerk.t3.codes",
-    assets: DEVELOPMENT_ASSETS,
+    appName: "D3 Code Dev",
+    scheme: "d3code-dev",
+    iosBundleIdentifier: "net.xalior.d3code.dev",
+    androidPackage: "net.xalior.d3code.dev",
+    relyingParty: undefined,
+    assets: D3_DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "T3 Code Preview",
-    scheme: "t3code-preview",
-    iosBundleIdentifier: "com.t3tools.t3code.preview",
-    androidPackage: "com.t3tools.t3code.preview",
-    relyingParty: "clerk.t3.codes",
-    assets: PREVIEW_ASSETS,
+    appName: "D3 Code Preview",
+    scheme: "d3code-preview",
+    iosBundleIdentifier: "net.xalior.d3code.preview",
+    androidPackage: "net.xalior.d3code.preview",
+    relyingParty: undefined,
+    assets: D3_PREVIEW_ASSETS,
   },
   production: {
-    appName: "T3 Code",
-    scheme: "t3code",
-    iosBundleIdentifier: "com.t3tools.t3code",
-    androidPackage: "com.t3tools.t3code",
-    relyingParty: "clerk.t3.codes",
-    assets: RELEASE_ASSETS,
+    appName: "D3 Code",
+    scheme: "d3code",
+    iosBundleIdentifier: "net.xalior.d3code",
+    androidPackage: "net.xalior.d3code",
+    relyingParty: undefined,
+    assets: D3_RELEASE_ASSETS,
   },
 } as const;
 
@@ -98,6 +150,7 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
+
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
@@ -158,7 +211,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: "d3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: "1.0.4",
@@ -174,7 +227,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+    url: "https://u.expo.dev/d1967699-a1db-470b-acfe-6c37e27e17e9",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -188,11 +241,17 @@ const config: ExpoConfig = {
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    appleTeamId: repoEnv.T3CODE_APPLE_TEAM_ID?.trim() || "ARK85ZXQ4Z",
+    // A variant with no relying party owns no domain it could publish an
+    // apple-app-site-association file to, so claiming one would fail silently.
+    ...(variant.relyingParty
+      ? {
+          associatedDomains: [
+            `applinks:${variant.relyingParty}`,
+            `webcredentials:${variant.relyingParty}`,
+          ],
+        }
+      : {}),
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
@@ -365,11 +424,15 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
+    // d3-code's own EAS project. Updates are served by the project that owns
+    // the app, so this and the updates URL above name the same one. Declaring
+    // another account's project stops the development server producing a
+    // manifest at all, with an error that mentions neither.
     eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+      projectId: "d1967699-a1db-470b-acfe-6c37e27e17e9",
     },
   },
-  owner: "pingdotgg",
+  owner: "xalior",
 };
 
 export default config;
