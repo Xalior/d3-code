@@ -128,11 +128,6 @@ export function FileTreeBrowser(props: {
   const insets = useSafeAreaInsets();
   // Native transparent-header height ≈ safe-area top + nav bar (~44). Matches the
   // observed adjustedContentInset bottom (~102) seen in the native trace.
-  //
-  // The header overlays the list on every iOS version, so the inset is needed on
-  // every iOS version. Only who applies it differs: with liquid glass the system
-  // adjusts the content itself, and without it the padding below does the same
-  // job by hand.
   const headerInset = insets.top + IOS_NAV_BAR_HEIGHT;
   const iconColor = String(useThemeColor("--color-icon-muted"));
   const {
