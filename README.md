@@ -16,6 +16,7 @@ Each fix lives on its own branch and lists the upstream ticket or pull request i
 
 - [t3code#4640](https://github.com/pingdotgg/t3code/issues/4640) - `fix/file-tree-large-workspaces` - Files panel reads one directory at a time through a new `projects.listDirectory` request rather than indexing the whole workspace, and opens symlinked directories. No upstream ticket covers the workspace scan timeout this also addresses.
 - [t3code#8129](https://github.com/pingdotgg/t3code/pull/8129) - `fix/file-tree-header-inset` - The mobile file tree no longer scrolls under the translucent header. The inset that compensates for the header was only calculated on iOS 26, so on earlier versions rows sat underneath it. Submitted upstream.
+- `fix/passkey-signing-requires-clerk` - A signed macOS build no longer demands a passkey provisioning profile when cloud features are switched off. Passkey sign-in serves T3 Connect, so with no Clerk key configured there is nothing for the entitlement to claim. Not yet submitted upstream.
 
 ---
 
