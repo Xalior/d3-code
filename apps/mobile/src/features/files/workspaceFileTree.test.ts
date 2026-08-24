@@ -8,6 +8,7 @@ import {
   unlistedDirectories,
   withDirectoryListing,
   withExpandedAncestors,
+  withExpandedDirectory,
   withoutDirectoryBranch,
   withRootListing,
   withToggledDirectory,
@@ -109,5 +110,17 @@ describe("withExpandedAncestors", () => {
     const state = openedWorkspace();
 
     expect(withExpandedAncestors(state, "src/index.ts")).toBe(state);
+  });
+});
+
+describe("withExpandedDirectory", () => {
+  it("opens a directory found by search along with everything containing it", () => {
+    const state = withExpandedDirectory(emptyWorkspaceFileTree, "src/components/files");
+
+    expect([...state.expandedPaths].toSorted()).toEqual([
+      "src",
+      "src/components",
+      "src/components/files",
+    ]);
   });
 });

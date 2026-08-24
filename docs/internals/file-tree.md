@@ -15,10 +15,10 @@ the web panel reads it back from a tree widget it does not own, and mobile holds
 The server offers two project listings and they are not interchangeable.
 
 `projects.listEntries` returns every entry in the workspace. It is served by
-[`WorkspaceSearchIndex.ts`][index], which scans the tree once per workspace, respects ignore rules,
-and gives up at a timeout and an entry cap. It answers "what exists anywhere in this workspace",
-which is what the `@` mention picker and content search need. The cost is the whole workspace on
-every caller, and past the cap the answer is incomplete.
+[`WorkspaceSearchIndex.ts`][index], which scans the tree once per workspace and respects ignore
+rules. It answers "what exists anywhere in this workspace", which is what the `@` mention picker
+and content search need. The cost is the whole workspace on every caller, and past its entry cap the
+answer is incomplete.
 
 `projects.listDirectory` returns the immediate children of one directory and nothing below them. It
 never touches the index: [`WorkspaceEntries.listDirectory`][entries] resolves the path inside the
@@ -60,9 +60,8 @@ flight. Two callers racing for the same directory share one request.
 `@pierre/trees` deliberately drops expand and collapse from `onMutation`, so nothing announces that
 a directory was opened. The panel reads the tree back instead.
 
-`model.subscribe()` fires on every controller notification, including selection changes and search
-keystrokes. Each notification schedules at most one walk on the next animation frame, so a burst
-costs a single pass.
+`model.subscribe()` fires on every controller notification, selection changes included. Each
+notification schedules at most one walk on the next animation frame, so a burst costs a single pass.
 
 That pass is `walkOpenDirectories` in [`fileTreeDirectories.ts`][directories]. It starts at the
 workspace root, descends only through directories the tree holds open, and stops at every closed
@@ -86,9 +85,13 @@ drops out of the reopen while the rest of the tree stands.
 
 Opening a file from outside the tree reveals it in the panel: the file picker, content search and
 chat links all do this. The file may sit under directories nobody has expanded, so the panel reads
-the chain of containing directories first, then expands them and selects the row. A selection that came from the
-tree itself is already visible and is left alone, so revealing it again cannot close an active tree
-search or steal focus.
+the chain of containing directories first, then expands them and selects the row. A selection that
+came from the tree itself is already visible and is left alone, so revealing it again cannot scroll
+the tree out from under the user.
+
+Search results stand in front of the tree, so a reveal that arrives while they are up waits. It runs
+when the results are dismissed, rather than scrolling a hidden tree and taking focus off the search
+field.
 
 ## Mobile: the open set is already state
 
@@ -110,19 +113,41 @@ Refresh needs no separate path. Re-reading the root replaces the listings and le
 directories alone, so those directories are simply outstanding again. Only the first reading of a
 workspace opens the root's own directories, so a refresh does not reopen a tree the user closed.
 
-`FileTreeBrowser` is given the open set and a toggle, and renders. It owns no loading.
+`FileTreeBrowser` is given the open set, a toggle, and the current search results, and renders. It
+owns no loading.
 
-## Searching the tree
+## Searching the workspace
 
-The search field in the file tree filters what the tree holds, which is what has been read. Finding
-a file anywhere in the workspace is the `@` mention picker and content search, which go through the
-index and are unaffected.
+The tree holds only the directories the user has opened, so filtering it would answer for that part
+of the workspace and say nothing about the rest. The search field goes to `projects.searchEntries`
+instead. Its results replace the tree rather than filter it. They come from anywhere in the
+workspace, in the order the server ranked them, which a tree would sort away.
+
+Both clients drive it through a `useWorkspaceEntrySearch` hook, [web][queries] and
+[mobile][mobilequeries], over the shared `searchEntries` query atom, debounced, and asking for
+files and directories alike. A file result opens in the preview and leaves the results up. A
+directory result returns the user to the tree with that directory and its ancestors open.
+
+### Searching a workspace that is still being indexed
+
+`searchEntries` is served by the same index as `listEntries`, and a large workspace takes longer to
+scan than the index gives its first scan. Missing that budget does not fail the index: the finder is
+kept, the scan carries on in the background, and searches are answered from the part of the
+workspace already read. Discarding it instead, as the index once did, restarted the scan from
+nothing on the next search, so a workspace too large for one budget never became searchable at all.
+
+Every `ProjectSearchEntriesResult` therefore carries an `indexStatus` of `isScanning` and
+`scannedFiles`. Both clients show the figure while the scan runs, "still indexing this workspace,
+N files so far", and repeat the query on a two second interval until it clears, so the result list
+grows as the workspace is read. The field is optional on the wire, and a server that does not report
+it leaves the clients silent rather than guessing.
 
 [authz]: ../../apps/server/src/auth/RpcAuthorization.ts
 [directories]: ../../apps/web/src/components/files/fileTreeDirectories.ts
 [entries]: ../../apps/server/src/workspace/WorkspaceEntries.ts
 [index]: ../../apps/server/src/workspace/WorkspaceSearchIndex.ts
 [mobilehook]: ../../apps/mobile/src/features/files/useWorkspaceFileTree.ts
+[mobilequeries]: ../../apps/mobile/src/state/queries.ts
 [mobiletree]: ../../apps/mobile/src/features/files/workspaceFileTree.ts
 [panel]: ../../apps/web/src/components/files/FileBrowserPanel.tsx
 [project]: ../../packages/contracts/src/project.ts

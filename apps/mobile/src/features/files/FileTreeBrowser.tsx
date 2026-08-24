@@ -1,4 +1,4 @@
-import type { ProjectEntry } from "@t3tools/contracts";
+import type { ProjectEntry, ProjectSearchIndexStatus } from "@t3tools/contracts";
 import { SymbolView } from "../../components/AppSymbol";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, View } from "react-native";
@@ -12,7 +12,9 @@ import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import {
   buildFileTree,
+  fileTreeEmptyState,
   flattenFileTree,
+  workspaceSearchResultNodes,
   type FileTreeNode,
   type VisibleFileTreeNode,
 } from "./fileTree";
@@ -106,9 +108,16 @@ export function FileTreeBrowser(props: {
   readonly error: string | null;
   readonly isPending: boolean;
   readonly searchQuery: string;
+  /** Whole-workspace matches for the current query, in the order the server ranked them. */
+  readonly searchEntries: ReadonlyArray<ProjectEntry>;
+  readonly searchError: string | null;
+  readonly searchIsPending: boolean;
+  /** How far the workspace index has read, while it is still reading. */
+  readonly searchIndexStatus: ProjectSearchIndexStatus | null;
   readonly selectedPath: string | null;
   readonly onPreviewFile?: (path: string) => void;
   readonly onRefresh: () => void;
+  readonly onRevealDirectory: (path: string) => void;
   readonly onSelectFile: (path: string) => void;
   readonly onToggleDirectory: (path: string) => void;
 }) {
@@ -136,15 +145,17 @@ export function FileTreeBrowser(props: {
     pendingSelection?.selectedPathAtPress === controlledSelectedPath
       ? pendingSelection.path
       : controlledSelectedPath;
+  const isSearching = props.searchQuery.trim().length > 0;
   const tree = useMemo(() => cachedFileTree(props.entries), [props.entries]);
+  // Search results replace the tree rather than filtering it: the tree holds
+  // only the directories the user has opened, so a match anywhere else has no
+  // row to show, and the server's ranking would be sorted away by a tree.
   const visibleNodes = useMemo(
     () =>
-      flattenFileTree({
-        nodes: tree,
-        expanded: expandedPaths,
-        searchQuery: props.searchQuery,
-      }),
-    [expandedPaths, props.searchQuery, tree],
+      isSearching
+        ? workspaceSearchResultNodes(props.searchEntries)
+        : flattenFileTree({ nodes: tree, expanded: expandedPaths }),
+    [expandedPaths, isSearching, props.searchEntries, tree],
   );
 
   useEffect(
@@ -173,22 +184,40 @@ export function FileTreeBrowser(props: {
     },
     [onSelectFile],
   );
+  // A result row is not a row of the tree, so a directory among the results
+  // hands the user back to the tree with that directory open instead of
+  // toggling a row they cannot see.
+  const { onRevealDirectory } = props;
   const renderItem = useCallback(
     ({ item }: { readonly item: VisibleFileTreeNode }) => (
       <FileTreeRow
         item={item}
         selected={item.node.kind === "file" && item.node.path === selectedPath}
-        expanded={expandedPaths.has(item.node.path)}
+        expanded={!isSearching && expandedPaths.has(item.node.path)}
         iconColor={iconColor}
-        onPressDirectory={onToggleDirectory}
+        onPressDirectory={isSearching ? onRevealDirectory : onToggleDirectory}
         onPreviewFile={onPreviewFile}
         onPressFile={handleSelectFile}
       />
     ),
-    [expandedPaths, handleSelectFile, iconColor, onPreviewFile, onToggleDirectory, selectedPath],
+    [
+      expandedPaths,
+      handleSelectFile,
+      iconColor,
+      isSearching,
+      onPreviewFile,
+      onRevealDirectory,
+      onToggleDirectory,
+      selectedPath,
+    ],
   );
+  const emptyState = fileTreeEmptyState({
+    searchQuery: props.searchQuery,
+    searchError: props.searchError,
+    searchIsPending: props.searchIsPending,
+  });
 
-  if (props.error && props.entries.length === 0) {
+  if (props.error && props.entries.length === 0 && !isSearching) {
     return (
       <View className="flex-1 bg-sheet px-4 py-5">
         <Text className="text-sm font-t3-bold text-foreground">Files unavailable</Text>
@@ -222,18 +251,27 @@ export function FileTreeBrowser(props: {
       contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
       refreshControl={<RefreshControl refreshing={props.isPending} onRefresh={props.onRefresh} />}
       renderItem={renderItem}
+      ListHeaderComponent={
+        isSearching && props.searchIndexStatus?.isScanning === true ? (
+          <View className="px-4 pb-2">
+            <Text className="text-xs leading-normal text-foreground-muted">
+              {`Still indexing this workspace. ${props.searchIndexStatus.scannedFiles.toLocaleString()} files so far, and results improve as it reads.`}
+            </Text>
+          </View>
+        ) : null
+      }
       ListEmptyComponent={
         <View className="px-4 py-5">
           {props.isPending ? (
             <ActivityIndicator size="small" />
           ) : (
             <>
-              <Text className="text-sm font-t3-bold text-foreground">No files found</Text>
-              <Text className="mt-1 text-xs leading-normal text-foreground-muted">
-                {props.searchQuery.trim().length > 0
-                  ? "Try a different search."
-                  : "This workspace has no files."}
-              </Text>
+              <Text className="text-sm font-t3-bold text-foreground">{emptyState.title}</Text>
+              {emptyState.detail === null ? null : (
+                <Text className="mt-1 text-xs leading-normal text-foreground-muted">
+                  {emptyState.detail}
+                </Text>
+              )}
             </>
           )}
         </View>

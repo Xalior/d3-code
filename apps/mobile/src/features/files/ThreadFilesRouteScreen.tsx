@@ -37,6 +37,7 @@ import { FileTreeBrowser } from "./FileTreeBrowser";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
 import { SourceFileSurface } from "./SourceFileSurface";
 import { ThreadFileNavigatorPane } from "./thread-file-navigator-pane";
+import { useWorkspaceEntrySearch } from "../../state/queries";
 import { useWorkspaceFileTree } from "./useWorkspaceFileTree";
 import { WorkspaceFileImagePreview } from "./WorkspaceFileImagePreview";
 import { WorkspaceFileWebPreview } from "./WorkspaceFileWebPreview";
@@ -253,6 +254,15 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     environmentId,
     selectedPath: null,
   });
+  const entrySearch = useWorkspaceEntrySearch({ cwd, environmentId, query: searchQuery });
+  const { revealDirectory } = fileTreeState;
+  const handleRevealDirectory = useCallback(
+    (path: string) => {
+      setSearchQuery("");
+      revealDirectory(path);
+    },
+    [revealDirectory],
+  );
   const handleReturnToThread = useCallback(() => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -447,9 +457,14 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
         error={fileTreeState.error}
         isPending={fileTreeState.isPending}
         searchQuery={searchQuery}
+        searchEntries={entrySearch.entries}
+        searchError={entrySearch.error}
+        searchIsPending={entrySearch.isPending}
+        searchIndexStatus={entrySearch.indexStatus}
         selectedPath={null}
         onPreviewFile={handlePreviewFile}
         onRefresh={fileTreeState.refresh}
+        onRevealDirectory={handleRevealDirectory}
         onSelectFile={handleSelectFile}
         onToggleDirectory={fileTreeState.toggleDirectory}
       />

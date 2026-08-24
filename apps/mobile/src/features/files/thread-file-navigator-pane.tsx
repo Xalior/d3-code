@@ -16,6 +16,7 @@ import { useThemeColor } from "../../lib/useThemeColor";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { FileTreeBrowser } from "./FileTreeBrowser";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
+import { useWorkspaceEntrySearch } from "../../state/queries";
 import { useWorkspaceFileTree } from "./useWorkspaceFileTree";
 
 export function ThreadFileNavigatorPane(props: {
@@ -37,6 +38,19 @@ export function ThreadFileNavigatorPane(props: {
     environmentId: props.environmentId,
     selectedPath: props.selectedPath,
   });
+  const entrySearch = useWorkspaceEntrySearch({
+    cwd: props.cwd,
+    environmentId: props.environmentId,
+    query: searchQuery,
+  });
+  const { revealDirectory } = fileTreeState;
+  const handleRevealDirectory = useCallback(
+    (path: string) => {
+      setSearchQuery("");
+      revealDirectory(path);
+    },
+    [revealDirectory],
+  );
   const handlePreviewFile = useCallback(
     (relativePath: string) => {
       preloadWorkspaceFileContents({
@@ -72,9 +86,14 @@ export function ThreadFileNavigatorPane(props: {
       error={fileTreeState.error}
       isPending={fileTreeState.isPending}
       searchQuery={searchQuery}
+      searchEntries={entrySearch.entries}
+      searchError={entrySearch.error}
+      searchIsPending={entrySearch.isPending}
+      searchIndexStatus={entrySearch.indexStatus}
       selectedPath={props.selectedPath}
       onPreviewFile={handlePreviewFile}
       onRefresh={fileTreeState.refresh}
+      onRevealDirectory={handleRevealDirectory}
       onSelectFile={props.onSelectFile}
       onToggleDirectory={fileTreeState.toggleDirectory}
     />

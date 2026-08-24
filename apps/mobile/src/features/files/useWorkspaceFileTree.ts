@@ -11,6 +11,7 @@ import {
   unlistedDirectories,
   withDirectoryListing,
   withExpandedAncestors,
+  withExpandedDirectory,
   withoutDirectoryBranch,
   withRootListing,
   withToggledDirectory,
@@ -23,15 +24,17 @@ export interface WorkspaceFileTree {
   readonly error: string | null;
   readonly isPending: boolean;
   readonly refresh: () => void;
+  /** Opens a directory and its ancestors, for a directory the user reached from search. */
+  readonly revealDirectory: (path: string) => void;
   readonly toggleDirectory: (path: string) => void;
 }
 
 /**
  * Reads a workspace one directory at a time. The root arrives when the screen
  * opens and every directory the user opens is read on its own, so showing the
- * tree costs the same on a small repository and a huge one. Nothing here
- * consults the whole-workspace search index; the `@` mention picker and content
- * search still do, because they have to answer for the whole workspace at once.
+ * tree costs the same on a small repository and a huge one. Browsing never
+ * consults the whole-workspace search index; searching does, because it has to
+ * answer for the whole workspace at once.
  */
 export function useWorkspaceFileTree(input: {
   readonly cwd: string | null;
@@ -97,6 +100,9 @@ export function useWorkspaceFileTree(input: {
   const toggleDirectory = useCallback((path: string) => {
     setTree((current) => withToggledDirectory(current, path));
   }, []);
+  const revealDirectory = useCallback((path: string) => {
+    setTree((current) => withExpandedDirectory(current, path));
+  }, []);
   const entries = useMemo(() => listedEntries(tree), [tree]);
 
   return {
@@ -105,6 +111,7 @@ export function useWorkspaceFileTree(input: {
     error: rootQuery.error,
     isPending: rootQuery.isPending,
     refresh: rootQuery.refresh,
+    revealDirectory,
     toggleDirectory,
   };
 }

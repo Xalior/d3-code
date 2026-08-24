@@ -198,7 +198,6 @@ export const make = Effect.gen(function* () {
         const recoverRefreshFailure = (
           cause:
             | WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed
-            | WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut
             | WorkspaceSearchIndex.WorkspaceSearchIndexRefreshFailed,
         ) =>
           Effect.gen(function* () {
@@ -209,6 +208,19 @@ export const make = Effect.gen(function* () {
             });
             yield* workspaceSearchIndexes.invalidate(indexKey);
           });
+        // A rescan still running when the budget ran out keeps its index: the
+        // scan continues in the background and searches answer from the part
+        // already read. Dropping the entry here would restart the scan from
+        // nothing on the next search, which is how a workspace too large to
+        // scan in one budget used to stay permanently unsearchable.
+        const noteUnfinishedRescan = (
+          cause: WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut,
+        ) =>
+          Effect.logInfo("Workspace search index rescan is still running", {
+            cwd,
+            variant,
+            timeout: cause.timeout,
+          });
         yield* Effect.gen(function* () {
           const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
           yield* searchIndex.refresh();
@@ -216,7 +228,7 @@ export const make = Effect.gen(function* () {
           Effect.provide(workspaceSearchIndexes.get(indexKey)),
           Effect.catchTags({
             WorkspaceSearchIndexCreateFailed: recoverRefreshFailure,
-            WorkspaceSearchIndexScanTimedOut: recoverRefreshFailure,
+            WorkspaceSearchIndexScanTimedOut: noteUnfinishedRescan,
             WorkspaceSearchIndexRefreshFailed: recoverRefreshFailure,
           }),
         );
