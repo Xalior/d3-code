@@ -2875,8 +2875,15 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
+  // Passkey sign-in needs an Associated Domains entitlement, which Apple grants
+  // through a provisioning profile naming a domain the signer controls. Without
+  // a profile configured the build signs without it rather than refusing: a
+  // signed build that cannot do passkeys is useful, and claiming a domain we do
+  // not own would fail at runtime anyway.
+  const macPasskeyProfileConfigured =
+    (loadRepoEnv({ repoRoot }).T3CODE_MACOS_PROVISIONING_PROFILE?.trim() ?? "").length > 0;
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    options.platform === "mac" && options.signed && macPasskeyProfileConfigured
       ? yield* Effect.try({
           try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
