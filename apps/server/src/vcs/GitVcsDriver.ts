@@ -326,11 +326,13 @@ const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
 /**
  * How many levels of submodule a checkpoint follows.
  *
- * Each level costs a `git config` read per repository, and a submodule of a submodule of a
- * submodule is already unusual. Anything deeper keeps the old behaviour: its gitlink commit
- * is recorded, its files are not.
+ * Every level costs a full `git add -A` in each repository it reaches, and a deeply nested
+ * workspace makes that ruinous: one measured workspace holds 628 submodule working trees
+ * five levels down, where following all of them turns a sub-second capture into minutes.
+ * One level covers the submodules a workspace is normally edited through, and anything
+ * deeper keeps the old behaviour: its gitlink commit is recorded, its files are not.
  */
-const CHECKPOINT_SUBMODULE_MAX_DEPTH = 3;
+const CHECKPOINT_SUBMODULE_MAX_DEPTH = 1;
 const WORKSPACE_GIT_HARDENED_CONFIG_ARGS = [
   "-c",
   "core.fsmonitor=false",
