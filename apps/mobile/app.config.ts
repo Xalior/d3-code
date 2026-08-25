@@ -26,14 +26,6 @@ if (
   );
 }
 
-// d3-code installs beside T3 Code rather than replacing it, so every channel
-// carries its own identifier, name and URL scheme.
-//
-// The app declares no Expo account and no EAS project. Claiming upstream's is
-// not harmless: the development server asks Expo's API about the declared
-// project before it will serve a manifest, that query returns nothing for an
-// account we are not a member of, and the dev client gets a 500 with no hint
-// that ownership is the reason.
 // Upstream's own asset sets. Kept as the reference for what a d3-code
 // channel still needs its own version of, the Android marks and colours in
 // particular, which have not been drawn yet. Unused by the variants below.
@@ -161,50 +153,6 @@ const dmSansFonts = {
   bold: "@expo-google-fonts/dm-sans/700Bold/DMSans_700Bold.ttf",
 } as const;
 
-const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
-  "expo-widgets",
-  {
-    bundleIdentifier: `${iosBundleIdentifier}.widgets`,
-    groupIdentifier: `group.${iosBundleIdentifier}`,
-    enablePushNotifications: true,
-    // Agent activity can update many times an hour; without the
-    // frequent-updates entitlement iOS throttles the update budget sooner.
-    frequentUpdates: true,
-    widgets: [
-      {
-        name: "AgentActivity",
-        displayName: "Agent Activity",
-        description: "Shows the current state of active T3 Code agents.",
-        supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"],
-      },
-    ],
-  },
-];
-
-const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
-  "expo-sharing",
-  {
-    ios: {
-      // Personal Teams cannot sign App Groups or extension targets. Keep the
-      // reduced-capability local build usable while release builds expose the
-      // real system share target.
-      enabled: !isIosPersonalTeamBuild,
-      extensionBundleIdentifier: `${iosBundleIdentifier}.sharing`,
-      appGroupId: `group.${iosBundleIdentifier}`,
-      activationRule: {
-        supportsText: true,
-        supportsWebUrlWithMaxCount: 1,
-        supportsImageWithMaxCount: 8,
-      },
-    },
-    android: {
-      enabled: true,
-      singleShareMimeTypes: ["text/plain", "image/*"],
-      multipleShareMimeTypes: ["image/*"],
-    },
-  },
-];
-
 // These aliases match the fonts' PostScript names on iOS. Register the same
 // names on Android so React Native and the native composer use one set of
 // family names without waiting for runtime font loading.
@@ -320,9 +268,6 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-sqlite",
-    ...(isIosPersonalTeamBuild
-      ? [sharingPlugin]
-      : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
     [
       "expo-notifications",
       {
@@ -385,12 +330,6 @@ const config: ExpoConfig = {
       },
     ],
     "./plugins/withIosCocoaPodsUuidCache.cjs",
-    // Must be listed BEFORE expo-widgets: same-type mods run last-registered-
-    // first, so registering earlier makes this plugin's mods run AFTER
-    // expo-widgets' — its dangerous mod wipes ios/ExpoWidgetsTarget/ (which
-    // would delete the asset catalog) and its xcodeproj mod creates the widget
-    // target (which must exist before the compile phase can be attached).
-    ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
     "./plugins/withIosSceneLifecycle.cjs",
     "./plugins/withAndroidCleartextTraffic.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
