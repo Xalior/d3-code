@@ -84,12 +84,12 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
     <Link
       aria-label="Go to threads"
       className={cn(
-        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center gap-1.5 overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 md:flex",
+        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 md:flex",
         onBackdrop ? "text-white" : "text-foreground",
       )}
       to="/"
     >
-      <D3Badge />
+      <D3Mark />
       <span
         className={cn(
           "-translate-y-px truncate text-sm font-medium tracking-tight",
@@ -102,18 +102,14 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-function D3Badge() {
+function D3Mark() {
   return (
     <svg
       aria-label="D3"
-      className="size-6 shrink-0"
-      viewBox="0 0 128 128"
+      className="h-5 w-auto shrink-0"
+      viewBox="10.8200 32.0300 107.3400 63.6600"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d="M0,10C0,4.48,4.48,0,10,0h108c5.52,0,10,4.48,10,10v108c0,5.52-4.48,10-10,10H10c-5.52,0-10-4.48-10-10V10Z"
-        fill="#000000"
-      />
       <path
         d="M18.45,95.68h-7.63v-63.65h7.63v1.58h-3.17v60.48h3.17v1.58Z"
         fill="#7f7fff"

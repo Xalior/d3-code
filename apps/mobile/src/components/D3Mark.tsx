@@ -1,17 +1,18 @@
 import Svg, { Path } from "react-native-svg";
 
 /**
- * The [D3] brand badge, the same artwork as assets/prod/logo.svg and the
- * desktop sidebar's D3Badge. The mark carries its own black background, so it
- * reads the same in either theme.
+ * The [D3] mark, the same artwork as assets/prod/logo-bare.svg and the desktop
+ * sidebar's D3Mark. Width derives from the viewBox aspect ratio.
  */
-export function D3Badge(props: { readonly size: number }) {
+export function D3Mark(props: { readonly height: number }) {
+  const aspectRatio = 1.6861;
   return (
-    <Svg accessibilityLabel="D3" height={props.size} width={props.size} viewBox="0 0 128 128">
-      <Path
-        d="M0,10C0,4.48,4.48,0,10,0h108c5.52,0,10,4.48,10,10v108c0,5.52-4.48,10-10,10H10c-5.52,0-10-4.48-10-10V10Z"
-        fill="#000000"
-      />
+    <Svg
+      accessibilityLabel="D3"
+      height={props.height}
+      width={props.height * aspectRatio}
+      viewBox="10.8200 32.0300 107.3400 63.6600"
+    >
       <Path
         d="M18.45,95.68h-7.63v-63.65h7.63v1.58h-3.17v60.48h3.17v1.58Z"
         fill="#7f7fff"
