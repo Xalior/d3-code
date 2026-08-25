@@ -124,6 +124,8 @@ Checkpointing captures workspace state over time so the app can diff turns and r
 
 A saved snapshot of a thread workspace at a particular turn. In practice it is a hidden Git ref in [CheckpointStore.ts][19] plus a projected summary from [ProjectionCheckpoints.ts][21]. Capture and lifecycle work happen in [CheckpointReactor.ts][6].
 
+A submodule keeps its files in its own repository, and the superproject records only the commit it points at. The Git driver therefore writes the same ref into every initialised submodule working tree under the workspace, so a turn that edits a file inside a submodule shows that file rather than a moved gitlink, or nothing at all. Submodules the workspace does not declare in `.gitmodules` are left alone.
+
 #### Checkpoint ref
 
 The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed in [Utils.ts][22], and used by [CheckpointStore.ts][19].
