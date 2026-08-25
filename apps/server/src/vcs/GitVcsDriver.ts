@@ -333,6 +333,15 @@ const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
  * deeper keeps the old behaviour: its gitlink commit is recorded, its files are not.
  */
 const CHECKPOINT_SUBMODULE_MAX_DEPTH = 1;
+/**
+ * Stops `git add` inspecting each submodule to decide whether it is dirty.
+ *
+ * A checkpoint records a submodule as the commit its HEAD points at, and that value is the
+ * same either way, so the inspection buys the capture nothing. It costs enormously: one
+ * measured workspace with 628 nested submodule working trees takes 17 seconds to add with
+ * the inspection and 0.5 seconds without it, for a byte-identical tree.
+ */
+const CHECKPOINT_ADD_CONFIG_ARGS = ["-c", "diff.ignoreSubmodules=all"] as const;
 const WORKSPACE_GIT_HARDENED_CONFIG_ARGS = [
   "-c",
   "core.fsmonitor=false",
@@ -869,7 +878,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         yield* execute({
           operation,
           cwd,
-          args: ["add", "-A", "--", "."],
+          args: [...CHECKPOINT_ADD_CONFIG_ARGS, "add", "-A", "--", "."],
           env: commitEnv,
         });
 
