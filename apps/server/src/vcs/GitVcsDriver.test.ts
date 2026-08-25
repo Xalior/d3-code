@@ -283,3 +283,38 @@ it.effect("checkpoint restore rewinds submodule files, and deleting sweeps submo
     assert.equal(submoduleRefs.stdout.trim(), "");
   }).pipe(Effect.provide(GitContractLayer)),
 );
+
+it.effect("checkpoint diff keeps a renamed submodule file under its submodule path", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const checkpoints = yield* checkpointsOf;
+    const { superprojectPath, submodulePath } = yield* makeSuperprojectWithSubmodule();
+
+    yield* checkpoints.captureCheckpoint({
+      cwd: superprojectPath,
+      checkpointRef: checkpointRef("turn/0"),
+    });
+
+    yield* writeFileAt(path.join(submodulePath, "renamed.ts"), "export const value = 1;\n");
+    yield* fileSystem.remove(path.join(submodulePath, "library.ts"));
+
+    yield* checkpoints.captureCheckpoint({
+      cwd: superprojectPath,
+      checkpointRef: checkpointRef("turn/1"),
+    });
+
+    const diff = yield* checkpoints.diffCheckpoints({
+      cwd: superprojectPath,
+      fromCheckpointRef: checkpointRef("turn/0"),
+      toCheckpointRef: checkpointRef("turn/1"),
+      ignoreWhitespace: false,
+    });
+
+    // Git writes `rename from`/`rename to` relative to the submodule, and readers trust
+    // those lines over the header, so the rename has to arrive as a delete and an add.
+    assert.notInclude(diff, "rename from");
+    assert.include(diff, "diff --git a/vendor/library/library.ts b/vendor/library/library.ts");
+    assert.include(diff, "diff --git a/vendor/library/renamed.ts b/vendor/library/renamed.ts");
+  }).pipe(Effect.provide(GitContractLayer)),
+);

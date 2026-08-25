@@ -1119,6 +1119,11 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
             cwd: repo.cwd,
             args: [
               ...patchArgs(fromCommit, toCommit, repo.prefix),
+              // Git writes `rename from`/`rename to` relative to the repository it ran in,
+              // and no prefix option reaches those two lines. A reader that trusts them
+              // would file a renamed submodule file at the workspace root. Reporting the
+              // rename as a delete and an add keeps every path in the patch correct.
+              "--no-renames",
               ...excludeHandledSubmodules(repo.cwd, submoduleRepos),
             ],
             allowNonZeroExit: true,
