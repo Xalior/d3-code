@@ -26,68 +26,34 @@ if (
   );
 }
 
-// Upstream's own asset sets. Kept as the reference for what a d3-code
-// channel still needs its own version of, the Android marks and colours in
-// particular, which have not been drawn yet. Unused by the variants below.
+// Every channel sits on the same black badge, so the Android background and
+// notification colours are the same in all three.
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
-  androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.developmentUniversalIconPng),
-  androidAdaptiveBackgroundColor: "#00639B",
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#00639B",
+  androidNotificationColor: "#FFFFFF",
 } as const;
 
 const PREVIEW_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
-  androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.nightlyLinuxIconPng),
-  androidAdaptiveBackgroundColor: "#111533",
+  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveBackgroundColor: "#000000",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#7565C7",
+  androidNotificationColor: "#FFFFFF",
 } as const;
 
 const RELEASE_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
-  androidAdaptiveForeground: "./assets/android-icon-mark.png",
-  androidAdaptiveBackgroundColor: "#000000",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#FFFFFF",
-} as const;
-
-const D3_DEVELOPMENT_ASSETS = {
-  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
-  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIconComposerProject),
-  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3DevelopmentIosIconPng),
-  androidAdaptiveForeground: "./assets/android-icon-mark.png",
-  androidAdaptiveBackgroundColor: "#000000",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#FFFFFF",
-} as const;
-
-const D3_PREVIEW_ASSETS = {
-  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIosIconPng),
-  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIconComposerProject),
-  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3NightlyIosIconPng),
-  androidAdaptiveForeground: "./assets/android-icon-mark.png",
-  androidAdaptiveBackgroundColor: "#000000",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#FFFFFF",
-} as const;
-
-const D3_RELEASE_ASSETS = {
-  appIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIosIconPng),
-  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIconComposerProject),
-  splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.d3ProductionIosIconPng),
   androidAdaptiveForeground: "./assets/android-icon-mark.png",
   androidAdaptiveBackgroundColor: "#000000",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
@@ -110,7 +76,7 @@ const VARIANT_CONFIG = {
     iosBundleIdentifier: "net.xalior.d3code.dev",
     androidPackage: "net.xalior.d3code.dev",
     relyingParty: undefined,
-    assets: D3_DEVELOPMENT_ASSETS,
+    assets: DEVELOPMENT_ASSETS,
   },
   preview: {
     appName: "D3 Code Preview",
@@ -118,7 +84,7 @@ const VARIANT_CONFIG = {
     iosBundleIdentifier: "net.xalior.d3code.preview",
     androidPackage: "net.xalior.d3code.preview",
     relyingParty: undefined,
-    assets: D3_PREVIEW_ASSETS,
+    assets: PREVIEW_ASSETS,
   },
   production: {
     appName: "D3 Code",
@@ -126,7 +92,7 @@ const VARIANT_CONFIG = {
     iosBundleIdentifier: "net.xalior.d3code",
     androidPackage: "net.xalior.d3code",
     relyingParty: undefined,
-    assets: D3_RELEASE_ASSETS,
+    assets: RELEASE_ASSETS,
   },
 } as const;
 

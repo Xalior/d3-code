@@ -245,48 +245,6 @@ const ICON_VARIANTS = [
       windowsIco: BRAND_ASSET_PATHS.productionWindowsIconIco,
     },
   },
-  {
-    label: "d3-development",
-    source: BRAND_ASSET_PATHS.d3DevelopmentIconComposerProject,
-    outputs: {
-      ios: BRAND_ASSET_PATHS.d3DevelopmentIosIconPng,
-      macos: BRAND_ASSET_PATHS.d3DevelopmentMacIconPng,
-      universal: BRAND_ASSET_PATHS.d3DevelopmentUniversalIconPng,
-      appleTouch: BRAND_ASSET_PATHS.d3DevelopmentWebAppleTouchIconPng,
-      favicon16: BRAND_ASSET_PATHS.d3DevelopmentWebFavicon16Png,
-      favicon32: BRAND_ASSET_PATHS.d3DevelopmentWebFavicon32Png,
-      faviconIco: BRAND_ASSET_PATHS.d3DevelopmentWebFaviconIco,
-      windowsIco: BRAND_ASSET_PATHS.d3DevelopmentWindowsIconIco,
-    },
-  },
-  {
-    label: "d3-preview",
-    source: BRAND_ASSET_PATHS.d3NightlyIconComposerProject,
-    outputs: {
-      ios: BRAND_ASSET_PATHS.d3NightlyIosIconPng,
-      macos: BRAND_ASSET_PATHS.d3NightlyMacIconPng,
-      universal: BRAND_ASSET_PATHS.d3NightlyUniversalIconPng,
-      appleTouch: BRAND_ASSET_PATHS.d3NightlyWebAppleTouchIconPng,
-      favicon16: BRAND_ASSET_PATHS.d3NightlyWebFavicon16Png,
-      favicon32: BRAND_ASSET_PATHS.d3NightlyWebFavicon32Png,
-      faviconIco: BRAND_ASSET_PATHS.d3NightlyWebFaviconIco,
-      windowsIco: BRAND_ASSET_PATHS.d3NightlyWindowsIconIco,
-    },
-  },
-  {
-    label: "d3-production",
-    source: BRAND_ASSET_PATHS.d3ProductionIconComposerProject,
-    outputs: {
-      ios: BRAND_ASSET_PATHS.d3ProductionIosIconPng,
-      macos: BRAND_ASSET_PATHS.d3ProductionMacIconPng,
-      universal: BRAND_ASSET_PATHS.d3ProductionUniversalIconPng,
-      appleTouch: BRAND_ASSET_PATHS.d3ProductionWebAppleTouchIconPng,
-      favicon16: BRAND_ASSET_PATHS.d3ProductionWebFavicon16Png,
-      favicon32: BRAND_ASSET_PATHS.d3ProductionWebFavicon32Png,
-      faviconIco: BRAND_ASSET_PATHS.d3ProductionWebFaviconIco,
-      windowsIco: BRAND_ASSET_PATHS.d3ProductionWindowsIconIco,
-    },
-  },
 ] as const satisfies ReadonlyArray<IconVariant>;
 
 const MACOS_EXPORT_CODEX_PROMPT = [
