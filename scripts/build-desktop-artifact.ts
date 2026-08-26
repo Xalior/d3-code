@@ -1993,6 +1993,33 @@ export function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(runtimeDependencies, catalog, "apps/desktop");
 }
 
+/**
+ * Publish target for builds we serve ourselves.
+ *
+ * This fork does not put binaries on GitHub. They go to our own web root and the
+ * app checks there, so the URL has to name the channel directory the feed sits
+ * in: electron-updater appends `<channel>-mac.yml` to whatever it is given.
+ *
+ * Baked into every build and unchangeable afterwards, which is why it is set
+ * rather than defaulted. An app shipped against a URL that does not answer can
+ * never update itself, and no later build reaches the ones already installed.
+ */
+export const resolveOwnServerPublishConfig = Effect.fn("resolveOwnServerPublishConfig")(function* (
+  updateChannel: "latest" | "nightly",
+) {
+  const env = yield* Config.all({
+    updateUrl: Config.string("T3CODE_DESKTOP_UPDATE_URL").pipe(Config.option),
+  });
+  const rawUrl = Option.getOrUndefined(env.updateUrl)?.trim();
+  if (!rawUrl) return undefined;
+
+  return {
+    provider: "generic" as const,
+    url: rawUrl.replace(/\/+$/, ""),
+    ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
+  };
+});
+
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
   updateChannel: "latest" | "nightly",
 ) {
@@ -2104,7 +2131,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
   if (!isDesktopPreviewVersion(version)) {
-    const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
+    // Our own server wins when it is configured. GitHub stays as the fallback so
+    // an unconfigured build behaves the way upstream's does.
+    const ownServer = yield* resolveOwnServerPublishConfig(updateChannel);
+    const publishConfig = ownServer ?? (yield* resolveGitHubPublishConfig(updateChannel));
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
     } else if (mockUpdates) {
