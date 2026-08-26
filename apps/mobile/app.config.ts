@@ -1,7 +1,18 @@
 import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
-import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { loadRepoEnv, readForkVersion } from "../../scripts/lib/public-config.ts";
+
+// The app carries the same version as the rest of the fork rather than a line of
+// its own. Upstream keeps the mobile app on a separate version because it ships
+// to a store on its own schedule; this fork builds every surface from one commit,
+// and a phone reporting a different number to the desktop beside it is a bug
+// report waiting to happen. Reading it beats restating it: the two cannot drift.
+//
+// The lookup lives in public-config because this file is loaded as CommonJS.
+// `import.meta.url` here makes the transpiler emit an ES module and the loader
+// then fails on `exports is not defined`.
+const FORK_VERSION = readForkVersion();
 
 type AppVariant = "development" | "preview" | "production";
 
@@ -128,7 +139,7 @@ const config: ExpoConfig = {
   slug: "d3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
-  version: "1.0.4",
+  version: FORK_VERSION,
   runtimeVersion: {
     // Fingerprint (not appVersion) so an OTA only reaches binaries whose native
     // project — native deps, config plugins, AND patches/ — matches the update.

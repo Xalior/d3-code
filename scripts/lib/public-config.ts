@@ -23,6 +23,20 @@ const REPO_ROOT = NodePath.dirname(
   NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url))),
 );
 
+/**
+ * The version every surface of the fork reports, taken from the server package.
+ *
+ * The desktop app, the web client and the mobile app are all built from one
+ * commit, so they say the same number rather than keeping separate lines.
+ */
+export function readForkVersion(): string {
+  const manifest = NodeFS.readFileSync(
+    NodePath.join(REPO_ROOT, "apps/server/package.json"),
+    "utf8",
+  );
+  return (JSON.parse(manifest) as { readonly version: string }).version;
+}
+
 export function loadRepoEnv({
   baseEnv = process.env,
   repoRoot = REPO_ROOT,
