@@ -37,6 +37,7 @@ import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Config from "effect/Config";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -2097,6 +2098,14 @@ export function resolveDesktopProductName(version: string): string {
     : (desktopPackageJson.productName ?? "D3 Code");
 }
 
+// The macOS About panel and Finder's Get Info both read
+// NSHumanReadableCopyright, which electron-builder derives from the staged
+// package's `author` unless the build config names the copyright itself.
+// Upstream holds the code, the fork holds this build, so both lines appear.
+export function resolveDesktopCopyright(year: number): string {
+  return `Copyright © ${year} T3 Tools\nCopyright © ${year} Waterside Development`;
+}
+
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
@@ -2111,9 +2120,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       }
     | undefined,
 ) {
+  const buildYear = DateTime.getPart(yield* DateTime.now, "year");
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
+    copyright: resolveDesktopCopyright(buildYear),
     artifactName: "D3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [...DESKTOP_FILE_EXCLUSIONS, ...(platform === "mac" ? MAC_FILE_EXCLUSIONS : [])],

@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
+import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -38,6 +39,7 @@ import {
   resolveFffNativeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
+  resolveDesktopCopyright,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
@@ -450,6 +452,27 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       },
     ]);
   });
+
+  it.effect("names both copyright holders on the About panel", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "1.2.3",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+
+      assert.equal(
+        resolveDesktopCopyright(2026),
+        "Copyright \u00a9 2026 T3 Tools\nCopyright \u00a9 2026 Waterside Development",
+      );
+      const buildYear = DateTime.getPart(yield* DateTime.now, "year");
+      assert.equal(config.copyright, resolveDesktopCopyright(buildYear));
+    }),
+  );
 
   it.effect("applies platform-specific packaging to the build config", () =>
     Effect.gen(function* () {
