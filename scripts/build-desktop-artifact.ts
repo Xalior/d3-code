@@ -2094,8 +2094,8 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "D3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "D3 Code");
+    ? "D3-code (Nightly)"
+    : (desktopPackageJson.productName ?? "D3-code");
 }
 
 // The macOS About panel and Finder's Get Info both read
@@ -2125,7 +2125,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
     copyright: resolveDesktopCopyright(buildYear),
-    artifactName: "D3-Code-${version}-${arch}.${ext}",
+    artifactName: "D3-code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [...DESKTOP_FILE_EXCLUSIONS, ...(platform === "mac" ? MAC_FILE_EXCLUSIONS : [])],
     directories: {

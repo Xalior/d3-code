@@ -82,7 +82,7 @@ const RELEASE_ASSETS = {
 // quietly. Custom-scheme links, which pairing uses, are unaffected.
 const VARIANT_CONFIG = {
   development: {
-    appName: "D3 Code Dev",
+    appName: "D3-code Dev",
     scheme: "d3code-dev",
     iosBundleIdentifier: "net.xalior.d3code.dev",
     androidPackage: "net.xalior.d3code.dev",
@@ -90,7 +90,7 @@ const VARIANT_CONFIG = {
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "D3 Code Preview",
+    appName: "D3-code Preview",
     scheme: "d3code-preview",
     iosBundleIdentifier: "net.xalior.d3code.preview",
     androidPackage: "net.xalior.d3code.preview",
@@ -98,7 +98,7 @@ const VARIANT_CONFIG = {
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "D3 Code",
+    appName: "D3-code",
     scheme: "d3code",
     iosBundleIdentifier: "net.xalior.d3code",
     androidPackage: "net.xalior.d3code",
