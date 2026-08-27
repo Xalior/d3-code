@@ -8,14 +8,20 @@ export const BUILT_IN_THEME_IDS = [
 ] as const;
 
 /** The mobile app's own hand-tuned palette, which is not part of the built-in library. */
-export const MOBILE_DEFAULT_THEME_ID = "t3-code";
+export const MOBILE_STANDARD_THEME_ID = "t3-code";
+
+/**
+ * What a mobile install renders before anyone has chosen a theme. Written as a
+ * literal because {@link D3_CODE_THEME} is declared further down this file.
+ */
+export const MOBILE_DEFAULT_THEME_ID = "d3-code";
 
 /**
  * Every palette the mobile app can render. Declared here so host-side tooling
  * (the app-store screenshot harness) can validate a requested theme without
  * importing React Native application code.
  */
-export const MOBILE_THEME_IDS = [MOBILE_DEFAULT_THEME_ID, ...BUILT_IN_THEME_IDS] as const;
+export const MOBILE_THEME_IDS = [MOBILE_STANDARD_THEME_ID, ...BUILT_IN_THEME_IDS] as const;
 
 export type BuiltInThemeId = (typeof BUILT_IN_THEME_IDS)[number];
 export type MobileThemeId = (typeof MOBILE_THEME_IDS)[number];

@@ -9,6 +9,7 @@ import {
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
+  STANDARD_MOBILE_THEME_ID,
   getMobileThemePreviewColors,
   getMobileThemeVariables,
   MOBILE_THEME_IDS,
@@ -70,15 +71,15 @@ describe("mobile themes", () => {
     }
   });
 
-  it("preserves the existing mobile palette as the default", () => {
-    expect(getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, "light")["--color-screen"]).toBe(
+  it("preserves the app's own hand-tuned palette", () => {
+    expect(getMobileThemeVariables(STANDARD_MOBILE_THEME_ID, "light")["--color-screen"]).toBe(
       "#f2f2f7",
     );
-    expect(getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, "dark")["--color-screen"]).toBe(
+    expect(getMobileThemeVariables(STANDARD_MOBILE_THEME_ID, "dark")["--color-screen"]).toBe(
       "#0a0a0a",
     );
     expect(
-      getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, "light")[
+      getMobileThemeVariables(STANDARD_MOBILE_THEME_ID, "light")[
         "--color-user-bubble-skill-foreground"
       ],
     ).toBe("#f0abfc");
@@ -94,7 +95,7 @@ describe("mobile themes", () => {
   });
 
   it("uses the same preview roles and standard artwork as desktop", () => {
-    expect(getMobileThemePreviewColors(DEFAULT_MOBILE_THEME_ID, "light")).toEqual({
+    expect(getMobileThemePreviewColors(STANDARD_MOBILE_THEME_ID, "light")).toEqual({
       canvas: "#fcfcfc",
       accent: "#f4f4f5",
       messageAction: "#4f46e5",

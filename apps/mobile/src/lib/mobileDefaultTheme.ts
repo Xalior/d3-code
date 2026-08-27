@@ -1,6 +1,10 @@
 import type { MobileThemeVariables } from "./mobileTheme";
 
-/** The existing T3 Code mobile palette, retained as the upgrade-safe default. */
+/**
+ * The app's own T3 Code mobile palette, kept so an install that chose it keeps
+ * rendering unchanged. It also names every variable the static stylesheet in
+ * global.css must declare.
+ */
 export const DEFAULT_MOBILE_THEME_VARIABLES = {
   light: {
     "--color-screen": "#f2f2f7",

@@ -1,8 +1,9 @@
 # Mobile appearance
 
-T3 Code Mobile includes the T3 Code, D3-code, T3 Chat, Grove, Ocean, Ember, and Iris themes. Each
+T3 Code Mobile includes the D3-code, T3 Code, T3 Chat, Grove, Ocean, Ember, and Iris themes. Each
 theme has light and dark colors that apply throughout the app, including code reviews, file
-previews, the terminal, native headers, and sheets.
+previews, the terminal, native headers, and sheets. D3-code is selected until you choose a
+different theme.
 
 To change themes:
 

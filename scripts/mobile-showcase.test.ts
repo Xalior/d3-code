@@ -259,8 +259,8 @@ it("enforces store screenshot count limits", () => {
   assert.throws(() => validateStoreAssetCount(googleSpec, 9, false), /allows at most 8/u);
 });
 
-it("defaults every device to the app's own palette", () => {
-  assert.equal(DEFAULT_SHOWCASE_THEME, "t3-code");
+it("defaults every device to the app's default theme", () => {
+  assert.equal(DEFAULT_SHOWCASE_THEME, "d3-code");
   assert.equal(
     showcaseConfig.devices.every((device) => device.theme === DEFAULT_SHOWCASE_THEME),
     true,
