@@ -1,4 +1,11 @@
-export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris"] as const;
+export const BUILT_IN_THEME_IDS = [
+  "d3-code",
+  "t3-chat",
+  "grove",
+  "ocean",
+  "ember",
+  "iris",
+] as const;
 
 /** The mobile app's own hand-tuned palette, which is not part of the built-in library. */
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
@@ -727,7 +734,22 @@ export const IRIS_THEME: ThemeDefinition = {
   sidebarArtwork: true,
 };
 
+/**
+ * The house palette: T3 Chat's light mode paired with Iris's dark mode. Both
+ * halves are taken by reference so the pair always matches the palettes it is
+ * built from.
+ */
+export const D3_CODE_THEME: ThemeDefinition = {
+  id: "d3-code",
+  label: "D3-code",
+  appearance: "light",
+  colors: T3_CHAT_THEME.colors,
+  variants: { dark: IRIS_THEME.variants!.dark! },
+  sidebarArtwork: true,
+};
+
 export const BUILT_IN_THEMES: ReadonlyArray<ThemeDefinition> = [
+  D3_CODE_THEME,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,

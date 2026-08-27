@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import indexHtml from "../index.html?raw";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
+  D3_CODE_THEME,
   getDefaultThemeColors,
   getThemeColorsForMode,
   invalidateCustomThemes,
@@ -19,6 +20,8 @@ import {
 } from "./themePalette";
 
 const THEME_STORAGE_KEY = "t3code:theme";
+// What both the boot script and the runtime fall back to with nothing stored.
+const DEFAULT_THEME_ID = D3_CODE_THEME.id;
 // A custom theme that omits chrome falls back to the runtime default, so the
 // boot copy of that default stays derived from the real palette.
 const DEFAULT_DARK_CHROME = getDefaultThemeColors("dark").chrome;
@@ -113,7 +116,7 @@ function runtimeResolvedAppearance(
   invalidateCustomThemes();
   try {
     const raw = storage[THEME_STORAGE_KEY] ?? null;
-    const theme = raw !== null && isKnownThemePreference(raw) ? raw : "system";
+    const theme = raw !== null && isKnownThemePreference(raw) ? raw : DEFAULT_THEME_ID;
     const followRaw = storage[THEME_FOLLOW_SYSTEM_STORAGE_KEY] ?? null;
     const appearanceRaw = storage[THEME_APPEARANCE_MODE_STORAGE_KEY] ?? null;
     const appearanceMode =
@@ -123,7 +126,7 @@ function runtimeResolvedAppearance(
           ? "system"
           : followRaw === "false"
             ? null
-            : theme === "system"
+            : theme === "system" || theme === DEFAULT_THEME_ID
               ? "system"
               : null;
     const followSystem = appearanceMode === "system";
@@ -226,7 +229,7 @@ describe("index.html boot script", () => {
       prefersDark: true,
     },
     {
-      name: "a removed custom theme falls back to system",
+      name: "a removed custom theme falls back to the default theme",
       storage: { [THEME_STORAGE_KEY]: "gone-theme" },
       prefersDark: true,
     },
@@ -342,7 +345,14 @@ describe("index.html boot script", () => {
   // boot script's hand-maintained copy into a CI-enforced contract: any
   // palette change breaks this test until the copy in index.html is updated.
   it("keeps every built-in boot splash in sync with the real palettes", () => {
-    for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
+    for (const theme of [
+      D3_CODE_THEME,
+      T3_CHAT_THEME,
+      GROVE_THEME,
+      OCEAN_THEME,
+      EMBER_THEME,
+      IRIS_THEME,
+    ]) {
       // The boot script resolves every built-in from a light base appearance.
       expect(theme.appearance).toBe("light");
       for (const mode of ["light", "dark"] as const) {
@@ -491,28 +501,47 @@ describe("index.html boot script", () => {
       prefersDark: false,
     });
 
-    expect(boot.themeId).toBeUndefined();
-    expect(boot.themeSelected).toBeUndefined();
-    expect(boot.backgroundColor).toBe("#ffffff");
-    expect(boot.metaContent).toBe("#ffffff");
+    expect(boot.themeId).toBe(DEFAULT_THEME_ID);
+    expect(boot.themeSelected).toBe("true");
+    expect(boot.backgroundColor).toBe(getThemeColorsForMode(D3_CODE_THEME, "light")!.chrome);
+    expect(boot.metaContent).toBe(getThemeColorsForMode(D3_CODE_THEME, "light")!.chrome);
   });
 
-  it("leaves unknown preferences unthemed so the runtime default applies", () => {
+  it("renders the default theme when nothing has been chosen", () => {
+    const light = runBootScript({ storage: {}, prefersDark: false });
+    expect(light.themeId).toBe(DEFAULT_THEME_ID);
+    expect(light.themeSelected).toBe("true");
+    expect(light.isDark).toBe(false);
+    expect(light.bootVariables["--boot-background"]).toBe(
+      getThemeColorsForMode(D3_CODE_THEME, "light")!.canvas,
+    );
+
+    const dark = runBootScript({ storage: {}, prefersDark: true });
+    expect(dark.themeId).toBe(DEFAULT_THEME_ID);
+    expect(dark.isDark).toBe(true);
+    expect(dark.bootVariables["--boot-background"]).toBe(
+      getThemeColorsForMode(D3_CODE_THEME, "dark")!.canvas,
+    );
+  });
+
+  it("falls back to the default theme for unknown preferences", () => {
     const boot = runBootScript({
       storage: { [THEME_STORAGE_KEY]: "gone-theme" },
       prefersDark: true,
     });
-    expect(boot.themeId).toBeUndefined();
-    expect(boot.themeSelected).toBeUndefined();
+    expect(boot.themeId).toBe(DEFAULT_THEME_ID);
+    expect(boot.themeSelected).toBe("true");
     expect(boot.isDark).toBe(true);
   });
 
-  it("follows the OS appearance when storage is unavailable", () => {
+  it("renders the default theme against the OS when storage is unavailable", () => {
     const light = runBootScript({ storageThrows: true, prefersDark: false });
     expect(light.isDark).toBe(false);
-    expect(light.themeId).toBeUndefined();
+    expect(light.themeId).toBe(DEFAULT_THEME_ID);
+    expect(light.backgroundColor).toBe(getThemeColorsForMode(D3_CODE_THEME, "light")!.chrome);
 
     const dark = runBootScript({ storageThrows: true, prefersDark: true });
     expect(dark.isDark).toBe(true);
+    expect(dark.themeId).toBe(DEFAULT_THEME_ID);
   });
 });

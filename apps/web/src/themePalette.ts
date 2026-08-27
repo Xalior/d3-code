@@ -3,6 +3,7 @@ import "culori/css";
 import { converter, parse } from "culori/fn";
 import {
   BUILT_IN_THEMES,
+  D3_CODE_THEME,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -16,9 +17,19 @@ import {
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 
-export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
+export {
+  D3_CODE_THEME,
+  EMBER_THEME,
+  GROVE_THEME,
+  IRIS_THEME,
+  OCEAN_THEME,
+  T3_CHAT_THEME,
+  THEME_COLOR_ROLES,
+};
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
+export const D3_CODE_THEME_ID = "d3-code" as const;
+export const D3_CODE_THEME_LABEL = "D3-code";
 export const T3_CHAT_THEME_ID = "t3-chat" as const;
 export const T3_CHAT_THEME_LABEL = "T3 Chat";
 export const GROVE_THEME_ID = "grove" as const;
@@ -60,6 +71,7 @@ const RESERVED_THEME_IDS = new Set([
   "system",
   "light",
   "dark",
+  D3_CODE_THEME_ID,
   T3_CHAT_THEME_ID,
   GROVE_THEME_ID,
   OCEAN_THEME_ID,

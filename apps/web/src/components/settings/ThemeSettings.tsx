@@ -19,6 +19,7 @@ import {
   type ThemeAppearance,
   type ThemeDefinition,
   type ThemeHalves,
+  D3_CODE_THEME,
   T3_CHAT_THEME,
   EMBER_THEME,
   GROVE_THEME,
@@ -50,6 +51,8 @@ import {
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
 
+// D3-code heads the library and is what a fresh install renders, so it is
+// rendered ahead of the plain T3 Code card rather than listed here.
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
   GROVE_THEME,
@@ -760,6 +763,25 @@ export function ThemeLibrary({
       .entries(),
   ];
 
+  const renderMaintainerCard = (maintainerTheme: ThemeDefinition) => (
+    <ThemeLibraryCard
+      activeModes={pickedModesFor(maintainerTheme.id)}
+      isActive={false}
+      key={maintainerTheme.id}
+      onDuplicate={() =>
+        openThemeEditor({
+          editingThemeId: null,
+          seedThemeId: maintainerTheme.id,
+          seedName: `${maintainerTheme.label} copy`,
+          initialAppearance,
+        })
+      }
+      onUse={() => persistTheme(maintainerTheme.id)}
+      onUseMode={handlePairPick(maintainerTheme.id)}
+      theme={getThemeCardDefinition(maintainerTheme)}
+    />
+  );
+
   const renderPairGrid = () => (
     // One shared provider so every tooltip in the grid hands off instantly to
     // the next hovered trigger instead of stacking on top of it. The card
@@ -770,6 +792,7 @@ export function ThemeLibrary({
         className="mx-auto grid w-full max-w-[56rem] gap-2 px-3 sm:px-4"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))" }}
       >
+        {renderMaintainerCard(D3_CODE_THEME)}
         {STANDARD_THEME_CARDS.map((standardTheme) => (
           <ThemeLibraryCard
             activeModes={pickedModesFor(null)}
@@ -788,27 +811,7 @@ export function ThemeLibrary({
             theme={standardTheme}
           />
         ))}
-        {MAINTAINER_THEMES.map((maintainerTheme) => {
-          const card = getThemeCardDefinition(maintainerTheme);
-          return (
-            <ThemeLibraryCard
-              activeModes={pickedModesFor(maintainerTheme.id)}
-              isActive={false}
-              key={maintainerTheme.id}
-              onDuplicate={() =>
-                openThemeEditor({
-                  editingThemeId: null,
-                  seedThemeId: maintainerTheme.id,
-                  seedName: `${maintainerTheme.label} copy`,
-                  initialAppearance,
-                })
-              }
-              onUse={() => persistTheme(maintainerTheme.id)}
-              onUseMode={handlePairPick(maintainerTheme.id)}
-              theme={card}
-            />
-          );
-        })}
+        {MAINTAINER_THEMES.map((maintainerTheme) => renderMaintainerCard(maintainerTheme))}
         {customThemeCollections.map(([collectionId, themes]) => (
           <CustomThemeCollectionCard
             activeModesFor={pickedModesFor}

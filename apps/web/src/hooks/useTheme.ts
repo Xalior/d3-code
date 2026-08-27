@@ -5,6 +5,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   applyThemePalette,
   CUSTOM_THEMES_STORAGE_KEY,
+  D3_CODE_THEME_ID,
   invalidateCustomThemes,
   canonicalThemePreference,
   isKnownThemePreference,
@@ -35,8 +36,10 @@ type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
+/** What an install renders before anyone has chosen a theme. */
+const DEFAULT_THEME_ID = D3_CODE_THEME_ID;
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
-  theme: "system",
+  theme: DEFAULT_THEME_ID,
   systemDark: false,
   followSystem: true,
   appearanceMode: "system",
@@ -114,8 +117,14 @@ function getSystemDark() {
   );
 }
 
+// The default theme carries both appearances, so with no stored mode it
+// follows the OS the same way an explicit "system" preference does.
+function defaultsToSystemAppearance(theme: Theme): boolean {
+  return theme === "system" || theme === DEFAULT_THEME_ID;
+}
+
 function readStoredFollowSystem(theme: Theme): boolean {
-  if (typeof window === "undefined") return theme === "system";
+  if (typeof window === "undefined") return defaultsToSystemAppearance(theme);
 
   try {
     const raw = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
@@ -125,7 +134,7 @@ function readStoredFollowSystem(theme: Theme): boolean {
     // Fall back to the legacy theme value when the separate preference is unavailable.
   }
 
-  return theme === "system";
+  return defaultsToSystemAppearance(theme);
 }
 
 function isThemePreferenceMode(value: string | null): value is ThemePreferenceMode {
