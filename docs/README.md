@@ -30,6 +30,7 @@ policy in [CONTRIBUTING.md](../CONTRIBUTING.md); agent rules in [AGENTS.md](../A
 - [Glossary](./internals/glossary.md)
 - [Scripts](./internals/scripts.md)
 - [Connection runtime](./internals/connection-runtime.md)
+- [Voice input](./internals/voice-input.md)
 - [Providers](./internals/providers.md)
 - [File tree](./internals/file-tree.md)
 - [Remote environments](./internals/remote.md)
