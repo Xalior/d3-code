@@ -136,6 +136,52 @@ const dmSansFonts = {
   bold: "@expo-google-fonts/dm-sans/700Bold/DMSans_700Bold.ttf",
 } as const;
 
+const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
+  "expo-widgets",
+  {
+    bundleIdentifier: `${iosBundleIdentifier}.widgets`,
+    groupIdentifier: `group.${iosBundleIdentifier}`,
+    enablePushNotifications: true,
+    // Agent activity can update many times an hour; without the
+    // frequent-updates entitlement iOS throttles the update budget sooner.
+    frequentUpdates: true,
+    widgets: [
+      {
+        name: "AgentActivity",
+        displayName: "Agent Activity",
+        description: "Shows the current state of active T3 Code agents.",
+        supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"],
+      },
+    ],
+  },
+];
+
+const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
+  "expo-sharing",
+  {
+    ios: {
+      // Personal Teams cannot sign App Groups or extension targets. Keep the
+      // reduced-capability local build usable while release builds expose the
+      // real system share target.
+      enabled: !isIosPersonalTeamBuild,
+      extensionBundleIdentifier: `${iosBundleIdentifier}.sharing`,
+      appGroupId: `group.${iosBundleIdentifier}`,
+      activationRule: {
+        supportsText: true,
+        supportsWebUrlWithMaxCount: 1,
+        supportsImageWithMaxCount: 8,
+        supportsMovieWithMaxCount: 8,
+        supportsFileWithMaxCount: 8,
+      },
+    },
+    android: {
+      enabled: true,
+      singleShareMimeTypes: ["*/*"],
+      multipleShareMimeTypes: ["*/*"],
+    },
+  },
+];
+
 // These aliases match the fonts' PostScript names on iOS. Register the same
 // names on Android so React Native and the native composer use one set of
 // family names without waiting for runtime font loading.
