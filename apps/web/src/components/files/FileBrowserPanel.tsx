@@ -410,7 +410,7 @@ export default function FileBrowserPanel({
   };
   useWorkspaceMutationRefresh({
     mutationId: workspaceMutationId,
-    refresh: entriesQuery.refresh,
+    refresh: rootQuery.refresh,
     resourceKey: `files:${environmentId}:${cwd}`,
   });
 
