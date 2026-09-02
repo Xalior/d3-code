@@ -3,9 +3,9 @@ import type {
   ContextMenuOpenContext as TreeContextMenuOpenContext,
 } from "@pierre/trees";
 import type { EnvironmentId, ProjectEntry } from "@t3tools/contracts";
-import { FileTree, useFileTree } from "@pierre/trees/react";
+import { FileTree, useFileTree, useFileTreeSelector } from "@pierre/trees/react";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
-import { RotateCw } from "lucide-react";
+import { ChevronsDownUpIcon, ChevronsUpDownIcon, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -30,6 +30,7 @@ import {
   WORKSPACE_ROOT_DIRECTORY_PATH,
 } from "./fileTreeDirectories";
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
+import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "./fileTreeExpansion";
 import {
   loadProjectDirectory,
   useProjectDirectoryQuery,
@@ -404,6 +405,62 @@ export default function FileBrowserPanel({
     [loadDirectory, model, onOpenFile],
   );
 
+  // Every directory the panel has discovered, in the tree's trailing-slash
+  // form. This is what "all" means to a paged tree: the unread part of the
+  // workspace holds no rows to expand or collapse yet.
+  const knownDirectoryTreePaths = useCallback(() => {
+    const paths: string[] = [];
+    for (const children of directoryChildrenRef.current.values()) {
+      for (const childPath of children) paths.push(`${childPath}/`);
+    }
+    return paths;
+  }, []);
+
+  const treeHasDirectories = useFileTreeSelector(model, () => knownDirectoryTreePaths().length > 0);
+  const allDirectoriesExpanded = useFileTreeSelector(model, (currentModel) =>
+    areAllDirectoriesExpanded(currentModel, knownDirectoryTreePaths()),
+  );
+
+  // A collapse, a refresh, or an unmount lands mid-cascade by bumping the run
+  // token; the cascade checks it after every read and stops between two.
+  const expandAllRunRef = useRef(0);
+  useEffect(() => {
+    return () => {
+      expandAllRunRef.current += 1;
+    };
+  }, [model]);
+
+  // Expanding everything in a paged tree is a cascade: each directory read
+  // reveals children that also need reading and opening. Reads run one at a
+  // time so a large workspace loads politely.
+  const expandAllDirectories = useCallback(async () => {
+    const run = ++expandAllRunRef.current;
+    let frontier: readonly string[] = [WORKSPACE_ROOT_DIRECTORY_PATH];
+    while (frontier.length > 0) {
+      const discovered: string[] = [];
+      for (const directoryPath of frontier) {
+        const read = await loadDirectory(directoryPath);
+        if (expandAllRunRef.current !== run) return;
+        if (!read) continue;
+        if (directoryPath !== WORKSPACE_ROOT_DIRECTORY_PATH) {
+          const item = model.getItem(`${directoryPath}/`);
+          if (item !== null && "expand" in item) item.expand();
+        }
+        discovered.push(...(directoryChildrenRef.current.get(directoryPath) ?? []));
+      }
+      frontier = discovered;
+    }
+  }, [loadDirectory, model]);
+
+  const toggleAllDirectories = () => {
+    if (allDirectoriesExpanded) {
+      expandAllRunRef.current += 1;
+      setAllDirectoriesExpanded(model, knownDirectoryTreePaths(), false);
+    } else {
+      void expandAllDirectories();
+    }
+  };
+
   const handleRefresh = () => {
     rootQuery.refresh();
     onRefreshSelectedFile?.();
@@ -420,6 +477,7 @@ export default function FileBrowserPanel({
   useEffect(() => {
     const rootEntries = rootQuery.data?.entries;
     if (rootEntries === undefined) return;
+    expandAllRunRef.current += 1;
     const reopenPaths = directoryRestoreOrder(expandedDirectoriesRef.current);
     entryKindsRef.current = new Map();
     directoryChildrenRef.current = new Map();
@@ -589,6 +647,32 @@ export default function FileBrowserPanel({
           onValueChange={setSearchQuery}
           onClose={() => setSearchQuery("")}
         />
+        {treeHasDirectories ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={
+                    allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
+                  }
+                  onClick={toggleAllDirectories}
+                />
+              }
+            >
+              {allDirectoriesExpanded ? (
+                <ChevronsDownUpIcon className="size-3.5" />
+              ) : (
+                <ChevronsUpDownIcon className="size-3.5" />
+              )}
+            </TooltipTrigger>
+            <TooltipPopup>
+              {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
       </div>
       {isSearching && entrySearch.indexStatus?.isScanning === true ? (
         <IndexingNotice scannedFiles={entrySearch.indexStatus.scannedFiles} />
