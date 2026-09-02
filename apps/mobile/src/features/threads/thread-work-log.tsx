@@ -75,7 +75,12 @@ function WorkLogIcon(props: {
   readonly highlighted?: boolean;
 }) {
   if (props.icon === "t3-code") {
-    return <D3Mark height={10} />;
+    return (
+      <D3Mark
+        height={10}
+        {...(props.highlighted ? { colorClassName: "accent-foreground" } : { color: props.color })}
+      />
+    );
   }
   return (
     <SymbolView
