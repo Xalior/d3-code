@@ -33,7 +33,6 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
@@ -138,7 +137,6 @@ import * as SourceControlProviderRegistry from "./sourceControl/SourceControlPro
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
-import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
@@ -1927,6 +1925,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.pullRequestsListStats, pullRequests.listStats(input), {
             "rpc.aggregate": "pull-requests",
           }),
+        [WS_METHODS.pullRequestsSummary]: (input) =>
+          observeRpcEffect(WS_METHODS.pullRequestsSummary, pullRequests.summary(input), {
+            "rpc.aggregate": "pull-requests",
+          }),
         [WS_METHODS.pullRequestsDetail]: (input) =>
           observeRpcEffect(WS_METHODS.pullRequestsDetail, pullRequests.detail(input), {
             "rpc.aggregate": "pull-requests",
@@ -2681,7 +2683,6 @@ export const websocketRpcRouteLayer = Layer.unwrap(
                       ),
                     ),
                   ),
-                  Layer.provide(VcsProcess.layer),
                 ),
               ),
             ),
