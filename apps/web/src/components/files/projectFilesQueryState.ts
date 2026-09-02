@@ -2,8 +2,13 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   ProjectListDirectoryResult,
+  ProjectListEntriesResult,
   ProjectReadFileResult,
 } from "@t3tools/contracts";
+import {
+  isWorkspaceImagePreviewPath,
+  isWorkspaceVideoPreviewPath,
+} from "@t3tools/shared/filePreview";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
@@ -62,6 +67,31 @@ export async function loadProjectDirectory(
     { reportDefect: false, reportFailure: false },
   );
   return result._tag === "Success" ? result.value : null;
+}
+
+function getProjectEntriesQueryAtom(environmentId: EnvironmentId, cwd: string) {
+  return projectEnvironment.listEntries({ environmentId, input: { cwd } });
+}
+
+/**
+ * The whole-workspace listing, capped by the server. The file tree pages one
+ * directory at a time and never uses this; the file breadcrumbs menu is its
+ * only consumer, so the full listing is fetched only while a preview is open.
+ */
+export function useProjectEntriesQuery(
+  environmentId: EnvironmentId,
+  cwd: string,
+): ProjectQueryState<ProjectListEntriesResult> {
+  const atom = getProjectEntriesQueryAtom(environmentId, cwd);
+  const result = useAtomValue(atom);
+  const refreshAtom = useAtomRefresh(atom);
+  const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
+  return {
+    data: Option.getOrNull(AsyncResult.value(result)),
+    error: errorMessage(result),
+    isPending: result.waiting,
+    refresh,
+  };
 }
 
 export function getProjectFileQueryAtom(
@@ -243,9 +273,13 @@ export function useProjectFileQuery(
   relativePath: string | null,
   enabled = true,
 ): ProjectQueryState<ProjectReadFileResult> {
-  const atom = enabled
-    ? getProjectFileQueryAtom(environmentId, cwd, relativePath)
-    : EMPTY_PROJECT_FILE_QUERY_ATOM;
+  const isMedia =
+    relativePath !== null &&
+    (isWorkspaceImagePreviewPath(relativePath) || isWorkspaceVideoPreviewPath(relativePath));
+  const atom =
+    enabled && !isMedia
+      ? getProjectFileQueryAtom(environmentId, cwd, relativePath)
+      : EMPTY_PROJECT_FILE_QUERY_ATOM;
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
   const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
