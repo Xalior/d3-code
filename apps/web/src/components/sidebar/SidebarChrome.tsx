@@ -30,7 +30,7 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
-import { D3Mark } from "./D3Mark";
+import { D3Mark } from "../D3Mark";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 
@@ -92,7 +92,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       to="/"
     >
       <span className="inline-flex min-w-0 items-baseline gap-1">
-        <D3Mark />
+        <D3Mark aria-label="D3" className="h-5 w-auto shrink-0" />
         <span
           className={cn(
             "truncate text-sm font-medium tracking-tight",
