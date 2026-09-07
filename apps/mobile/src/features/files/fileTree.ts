@@ -120,18 +120,6 @@ export function fileTreeEmptyState(input: {
   return { title: "No matching files", detail: "Try a different search." };
 }
 
-export function countFileNodes(nodes: ReadonlyArray<FileTreeNode>): number {
-  let count = 0;
-  for (const node of nodes) {
-    if (node.kind === "file") {
-      count += 1;
-    } else {
-      count += countFileNodes(node.children);
-    }
-  }
-  return count;
-}
-
 function flattenNode(
   output: VisibleFileTreeNode[],
   node: FileTreeNode,
@@ -155,17 +143,4 @@ export function flattenFileTree(input: {
     flattenNode(output, node, 0, input.expanded);
   }
   return output;
-}
-
-export function firstFilePath(nodes: ReadonlyArray<FileTreeNode>): string | null {
-  for (const node of nodes) {
-    if (node.kind === "file") {
-      return node.path;
-    }
-    const child = firstFilePath(node.children);
-    if (child !== null) {
-      return child;
-    }
-  }
-  return null;
 }

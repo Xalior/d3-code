@@ -7,7 +7,13 @@ import type {
   ProviderInteractionMode,
   RuntimeMode,
   ServerConfig as T3ServerConfig,
+  UsageLimitsReport,
 } from "@t3tools/contracts";
+import {
+  collectProviderUsageLimits,
+  hasProviderUsageLimits,
+  isUsageLimitsCommand,
+} from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
 import {
@@ -20,10 +26,11 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { ActivityIndicator, Platform, Pressable, View, type ViewStyle } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, View, type ViewStyle } from "react-native";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import {
   composerAttachmentUploadBlockReason,
+  composerAttachmentsStillUploading,
   composerAttachmentUploadsAtom,
 } from "../../state/composer-attachment-uploads";
 import Animated, {
@@ -124,6 +131,8 @@ export interface ThreadComposerProps {
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
   readonly onSendMessage: () => Promise<MessageId | null>;
+  /** `/usage-limits` resolves locally; the host decides where the report shows. Null clears it. */
+  readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => void;
@@ -315,8 +324,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     (props.selectedThread.session?.status === "running" ||
       props.selectedThread.session?.status === "starting");
 
+  const uploadStates = useAtomValue(composerAttachmentUploadsAtom);
+  const attachmentsUploading =
+    props.connectionState === "connected" &&
+    composerAttachmentsStillUploading({
+      environmentId: props.environmentId,
+      attachments: props.draftAttachments,
+      serverConfig: props.serverConfig,
+      states: uploadStates,
+    });
+  // Every send goes through the outbox; the label says whether it leaves now
+  // or waits (for the connection, an earlier queued message, or an upload).
   const sendLabel =
-    props.connectionState !== "connected" || props.queueCount > 0 ? "Queue" : "Send";
+    props.connectionState !== "connected" || props.queueCount > 0 || attachmentsUploading
+      ? "Queue"
+      : "Send";
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const modelUnavailable =
@@ -336,6 +358,30 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
   const composerOwnerKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  // T3 owns /usage-limits only where Limits has data for the selected provider;
+  // elsewhere the name stays the provider's own and is sent through untouched.
+  const usageLimitsOffered =
+    selectedProviderStatus !== null &&
+    hasProviderUsageLimits(
+      selectedProviderStatus.driver,
+      props.serverConfig?.providers ?? [],
+      props.serverConfig?.usageLimitSources ?? [],
+    );
+  // Answered locally from the last Limits snapshot; the agent never sees it.
+  const openUsageLimits = useCallback(() => {
+    const report = collectProviderUsageLimits(
+      currentModelSelection.instanceId,
+      props.serverConfig?.providers ?? [],
+      props.serverConfig?.usageLimitSources ?? [],
+      Date.now(),
+    );
+    onShowUsageLimits(report);
+    if (!report) {
+      Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
+    }
+    return report !== null;
+  }, [currentModelSelection.instanceId, onShowUsageLimits, props.serverConfig]);
 
   const composerMenu = useComposerCommandMenu({
     draftMessage: props.draftMessage,
@@ -350,6 +396,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
+    offersUsageLimits: usageLimitsOffered,
+    // With attachments aboard the pick just inserts the text, so it sends as a prompt.
+    onUsageLimits:
+      usageLimitsOffered && props.draftAttachments.length === 0 ? openUsageLimits : undefined,
   });
   const voiceInput = useVoiceInputController({
     ownerKey: composerOwnerKey,
@@ -367,7 +417,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const isExpanded = isFocused || settingsSheetPresentation.isActive;
   const showsCompactDictation = isVoiceInputPresented && !isExpanded;
   const isToolbarVisible = isExpanded || isVoiceInputPresented;
-  const uploadStates = useAtomValue(composerAttachmentUploadsAtom);
   const attachmentBlockReason = composerAttachmentUploadBlockReason({
     environmentId: props.environmentId,
     attachments: props.draftAttachments,
@@ -428,9 +477,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
     onEditorFocusChange?.(false);
   }, [onEditorFocusChange, onExpandedChange, settingsSheetPresentation.isActive]);
-  const { onSendMessage } = props;
-
   const handleSend = useCallback(async () => {
+    // Typed out in full rather than picked from the menu. Attachments mean the
+    // user is sending a prompt, so those go through as usual.
+    if (
+      usageLimitsOffered &&
+      isUsageLimitsCommand(props.draftMessage) &&
+      props.draftAttachments.length === 0
+    ) {
+      if (openUsageLimits()) onChangeDraftMessage("");
+      return;
+    }
     if (voiceInput.blocksSubmission) return;
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
@@ -453,6 +510,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       inFlightThreadIdsRef.current.delete(threadKey);
     }
   }, [
+    props.draftMessage,
+    props.draftAttachments.length,
+    onChangeDraftMessage,
+    openUsageLimits,
+    usageLimitsOffered,
     onSendMessage,
     props.environmentId,
     props.environmentLabel,
