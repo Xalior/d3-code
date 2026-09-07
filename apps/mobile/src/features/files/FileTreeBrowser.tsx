@@ -9,11 +9,10 @@ import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { cn } from "../../lib/cn";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
+import { fileTreeEmptyState, workspaceSearchResultNodes } from "./d3FileTreeSearch";
 import {
   buildFileTree,
-  fileTreeEmptyState,
   flattenFileTree,
-  workspaceSearchResultNodes,
   type FileTreeNode,
   type VisibleFileTreeNode,
 } from "./fileTree";
