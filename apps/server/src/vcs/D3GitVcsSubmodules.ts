@@ -58,6 +58,21 @@ export interface CheckpointSubmodulesDeps {
   readonly path: Path.Path;
 }
 
+/**
+ * Rewrites `git diff --numstat -z` output so every path starts with `prefix`. A record is
+ * `added\tdeleted\tpath` terminated by NUL. Rename records never occur here because submodule
+ * diffs run with `--no-renames`.
+ */
+function prefixNumstatPaths(numstat: string, prefix: string): string {
+  return numstat
+    .split("\0")
+    .map((record) => {
+      const counts = /^(\d+|-)\t(\d+|-)\t/.exec(record);
+      return counts ? `${counts[0]}${prefix}${record.slice(counts[0].length)}` : record;
+    })
+    .join("\0");
+}
+
 export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) => {
   const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
     execute({
@@ -441,8 +456,16 @@ export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) =>
           ],
           allowNonZeroExit: true,
           maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
+          outputMode: input.format === "numstat" ? "error" : "truncate",
         });
-        return submoduleResult.exitCode === 0 ? submoduleResult.stdout : "";
+        if (submoduleResult.exitCode !== 0) {
+          return "";
+        }
+        // A numstat record carries its path in the body, where no prefix option reaches, so
+        // the submodule's path from the workspace root is pushed onto each record here.
+        return input.format === "numstat"
+          ? prefixNumstatPaths(submoduleResult.stdout, repo.prefix)
+          : submoduleResult.stdout;
       }).pipe(
         Effect.tapError((error) =>
           Effect.logWarning("checkpoint diff skipped a submodule", {
@@ -455,10 +478,12 @@ export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) =>
       ),
     );
 
-    return [workspacePatch, ...submodulePatches]
-      .filter((patch) => patch.length > 0)
-      .map((patch) => (patch.endsWith("\n") ? patch : `${patch}\n`))
-      .join("");
+    const patches = [workspacePatch, ...submodulePatches].filter((patch) => patch.length > 0);
+    // numstat records are NUL-terminated already; a newline between chunks would hide the
+    // record that follows it from the reader.
+    return input.format === "numstat"
+      ? patches.join("")
+      : patches.map((patch) => (patch.endsWith("\n") ? patch : `${patch}\n`)).join("");
   });
 
   /**
