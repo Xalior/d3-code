@@ -1,18 +1,8 @@
 import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
-import { loadRepoEnv, readForkVersion } from "../../scripts/lib/public-config.ts";
-
-// The app carries the same version as the rest of the fork rather than a line of
-// its own. Upstream keeps the mobile app on a separate version because it ships
-// to a store on its own schedule; this fork builds every surface from one commit,
-// and a phone reporting a different number to the desktop beside it is a bug
-// report waiting to happen. Reading it beats restating it: the two cannot drift.
-//
-// The lookup lives in public-config because this file is loaded as CommonJS.
-// `import.meta.url` here makes the transpiler emit an ES module and the loader
-// then fails on `exports is not defined`.
-const FORK_VERSION = readForkVersion();
+import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { withD3Identity } from "./d3.config.ts";
 
 type AppVariant = "development" | "preview" | "production";
 
@@ -43,8 +33,6 @@ if (
   );
 }
 
-// Every channel sits on the same black badge, so the Android background and
-// notification colours are the same in all three.
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
@@ -54,7 +42,7 @@ const DEVELOPMENT_ASSETS = {
   androidAdaptiveBackgroundImage: "./assets/android-icon-background-dev.png",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#FFFFFF",
+  androidNotificationColor: "#00639B",
 } as const;
 
 const PREVIEW_ASSETS = {
@@ -66,7 +54,7 @@ const PREVIEW_ASSETS = {
   androidAdaptiveBackgroundImage: "./assets/android-icon-background-nightly.png",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#FFFFFF",
+  androidNotificationColor: "#7565C7",
 } as const;
 
 const RELEASE_ASSETS = {
@@ -81,37 +69,29 @@ const RELEASE_ASSETS = {
   androidNotificationColor: "#FFFFFF",
 } as const;
 
-// This branch builds d3-code, so the channels carry the d3-code identity and
-// nothing has to be passed at the command line to get it. Upstream's own
-// identifiers stay on the branches that carry upstream's work.
-//
-// relyingParty is deliberately absent. Associated domains require Apple to
-// fetch an apple-app-site-association file naming the bundle from the domain,
-// and clerk.t3.codes is not ours to publish to, so claiming it would fail
-// quietly. Custom-scheme links, which pairing uses, are unaffected.
 const VARIANT_CONFIG = {
   development: {
-    appName: "D3-code Dev",
-    scheme: "d3code-dev",
-    iosBundleIdentifier: "net.xalior.d3code.dev",
-    androidPackage: "net.xalior.d3code.dev",
-    relyingParty: undefined,
+    appName: "T3 Code Dev",
+    scheme: "t3code-dev",
+    iosBundleIdentifier: "com.t3tools.t3code.dev",
+    androidPackage: "com.t3tools.t3code.dev",
+    relyingParty: "clerk.t3.codes",
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "D3-code Preview",
-    scheme: "d3code-preview",
-    iosBundleIdentifier: "net.xalior.d3code.preview",
-    androidPackage: "net.xalior.d3code.preview",
-    relyingParty: undefined,
+    appName: "T3 Code Preview",
+    scheme: "t3code-preview",
+    iosBundleIdentifier: "com.t3tools.t3code.preview",
+    androidPackage: "com.t3tools.t3code.preview",
+    relyingParty: "clerk.t3.codes",
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "D3-code",
-    scheme: "d3code",
-    iosBundleIdentifier: "net.xalior.d3code",
-    androidPackage: "net.xalior.d3code",
-    relyingParty: undefined,
+    appName: "T3 Code",
+    scheme: "t3code",
+    iosBundleIdentifier: "com.t3tools.t3code",
+    androidPackage: "com.t3tools.t3code",
+    relyingParty: "clerk.t3.codes",
     assets: RELEASE_ASSETS,
   },
 } as const;
@@ -128,7 +108,6 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
-
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
@@ -191,10 +170,10 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "d3-code",
+  slug: "t3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
-  version: FORK_VERSION,
+  version: "1.1.0",
   runtimeVersion: {
     // Development manifests resolve on every launch, so avoid fingerprint's
     // expensive native-project calculation there. Preview and production stay
@@ -206,7 +185,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
-    url: "https://u.expo.dev/d1967699-a1db-470b-acfe-6c37e27e17e9",
+    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -220,17 +199,11 @@ const config: ExpoConfig = {
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements).
-    appleTeamId: repoEnv.T3CODE_APPLE_TEAM_ID?.trim() || "ARK85ZXQ4Z",
-    // A variant with no relying party owns no domain it could publish an
-    // apple-app-site-association file to, so claiming one would fail silently.
-    ...(variant.relyingParty
-      ? {
-          associatedDomains: [
-            `applinks:${variant.relyingParty}`,
-            `webcredentials:${variant.relyingParty}`,
-          ],
-        }
-      : {}),
+    appleTeamId: "ARK85ZXQ4Z",
+    associatedDomains: [
+      `applinks:${variant.relyingParty}`,
+      `webcredentials:${variant.relyingParty}`,
+    ],
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
     },
@@ -306,6 +279,9 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-sqlite",
+    ...(isIosPersonalTeamBuild
+      ? [sharingPlugin]
+      : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
     [
       "expo-notifications",
       {
@@ -314,7 +290,9 @@ const config: ExpoConfig = {
         mode: APP_VARIANT === "development" ? "development" : "production",
       },
     ],
-    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: false }],
+    // appleSignIn must be gated here: withoutIosPersonalTeamCapabilities.cjs runs before
+    // plugins earlier in this array, so it cannot strip the entitlement Clerk would add.
+    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
     "expo-web-browser",
     [
       "expo-quick-actions",
@@ -378,6 +356,12 @@ const config: ExpoConfig = {
       },
     ],
     "./plugins/withIosCocoaPodsUuidCache.cjs",
+    // Must be listed BEFORE expo-widgets: same-type mods run last-registered-
+    // first, so registering earlier makes this plugin's mods run AFTER
+    // expo-widgets' — its dangerous mod wipes ios/ExpoWidgetsTarget/ (which
+    // would delete the asset catalog) and its xcodeproj mod creates the widget
+    // target (which must exist before the compile phase can be attached).
+    ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
     "./plugins/withIosSceneLifecycle.cjs",
     "./plugins/withAndroidCleartextTraffic.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
@@ -411,15 +395,11 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    // d3-code's own EAS project. Updates are served by the project that owns
-    // the app, so this and the updates URL above name the same one. Declaring
-    // another account's project stops the development server producing a
-    // manifest at all, with an error that mentions neither.
     eas: {
-      projectId: "d1967699-a1db-470b-acfe-6c37e27e17e9",
+      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     },
   },
-  owner: "xalior",
+  owner: "pingdotgg",
 };
 
-export default config;
+export default withD3Identity(config);
