@@ -1265,7 +1265,7 @@ export function themeIdFromName(name: string): string {
   return normalized || "custom-theme";
 }
 
-export class ThemeLibraryStorageError extends Schema.TaggedErrorClass<ThemeLibraryStorageError>()(
+export class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibraryStorageError>()(
   "ThemeLibraryStorageError",
   {
     storageKey: Schema.String,
