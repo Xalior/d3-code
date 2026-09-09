@@ -18,20 +18,23 @@ import {
 export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
 /** The app's own palette, which is a theme to choose rather than the default. */
 export const STANDARD_MOBILE_THEME_ID = MOBILE_STANDARD_THEME_ID;
-export const MOBILE_THEME_IDS = SHARED_MOBILE_THEME_IDS;
-export type MobileThemeId = SharedMobileThemeId;
+export const MOBILE_THEME_IDS = [...SHARED_MOBILE_THEME_IDS, "material-you"] as const;
+export type MobileThemeId = SharedMobileThemeId | "material-you";
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
 export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
 
 // D3-code heads the list and is what a fresh install renders; the app's own
-// T3 Code palette follows it, then the rest of the built-in library.
+// T3 Code palette follows it, then Material You, then the rest of the built-in
+// library. Material You is offered only where Android reports wallpaper colors,
+// so the settings screen filters it out elsewhere.
 export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   readonly id: MobileThemeId;
   readonly label: string;
 }> = [
   { id: D3_CODE_THEME.id as MobileThemeId, label: D3_CODE_THEME.label },
   { id: STANDARD_MOBILE_THEME_ID, label: "T3 Code" },
+  { id: "material-you", label: "Material You" },
   ...BUILT_IN_THEMES.filter((theme) => theme.id !== D3_CODE_THEME.id).map((theme) => ({
     id: theme.id as MobileThemeId,
     label: theme.label,
@@ -227,6 +230,16 @@ export function createMobileThemeVariables(
     "--color-card": c.surfaceRaised,
     "--color-card-alt": c.surface,
     "--color-card-translucent": withAlpha(c.surfaceRaised, 0.8),
+    "--color-thread-canvas": c.surface,
+    "--color-thread-selected": c.surfaceRaised,
+    "--color-thread-selected-foreground": c.text,
+    "--color-thread-selected-foreground-muted": c.textMuted,
+    "--color-composer-panel": themeColorWithAlpha(c.surface, appearance === "dark" ? 0.92 : 0.88),
+    "--color-composer-surface": themeColorWithAlpha(
+      c.surfaceRaised,
+      appearance === "dark" ? 0.9 : 0.94,
+    ),
+    "--color-composer-border": themeColorWithAlpha(c.border, appearance === "dark" ? 0.46 : 0.54),
     "--color-foreground": c.text,
     "--color-foreground-secondary": c.textMuted,
     "--color-foreground-muted": c.mutedForeground,
@@ -316,7 +329,8 @@ export function getMobileThemePreviewColors(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): ThemePreviewColors {
-  if (themeId === STANDARD_MOBILE_THEME_ID) return STANDARD_THEME_PREVIEW_COLORS[appearance];
+  if (themeId === STANDARD_MOBILE_THEME_ID || themeId === "material-you")
+    return STANDARD_THEME_PREVIEW_COLORS[appearance];
   const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
   const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
   return {

@@ -21,7 +21,7 @@ export function getMobileThemeRuntimeVariables(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): MobileThemeVariables {
-  return themeId === STANDARD_MOBILE_THEME_ID
+  return themeId === STANDARD_MOBILE_THEME_ID || themeId === "material-you"
     ? defaults[appearance]
     : getMobileThemeVariables(themeId, appearance);
 }
