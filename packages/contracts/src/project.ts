@@ -230,7 +230,7 @@ export class ProjectListEntriesError extends Schema.TaggedError<ProjectListEntri
   }
 }
 
-export class ProjectListDirectoryError extends Schema.TaggedErrorClass<ProjectListDirectoryError>()(
+export class ProjectListDirectoryError extends Schema.TaggedError<ProjectListDirectoryError>()(
   "ProjectListDirectoryError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),

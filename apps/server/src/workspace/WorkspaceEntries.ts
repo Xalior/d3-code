@@ -76,7 +76,7 @@ export const WorkspaceEntriesBrowseError = Schema.Union([
 ]);
 export type WorkspaceEntriesBrowseError = typeof WorkspaceEntriesBrowseError.Type;
 
-export class WorkspaceEntriesListDirectoryFailedError extends Schema.TaggedErrorClass<WorkspaceEntriesListDirectoryFailedError>()(
+export class WorkspaceEntriesListDirectoryFailedError extends Schema.TaggedError<WorkspaceEntriesListDirectoryFailedError>()(
   "WorkspaceEntriesListDirectoryFailedError",
   {
     cwd: Schema.String,
