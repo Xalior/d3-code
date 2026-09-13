@@ -48,11 +48,10 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { ThreadRouteScreen } from "../threads/ThreadRouteScreen";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { FileTreeBrowser } from "./FileTreeBrowser";
+import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
 import { SourceFileSurface } from "./SourceFileSurface";
 import { ThreadFileNavigatorPane } from "./thread-file-navigator-pane";
-import { useWorkspaceEntrySearch } from "../../state/queries";
-import { useWorkspaceFileTree } from "./useWorkspaceFileTree";
 import { WorkspaceFileImagePreview } from "./WorkspaceFileImagePreview";
 import { WorkspaceFilePreviewError } from "./WorkspaceFilePreviewError";
 import { WorkspaceFileVideoPreview } from "./WorkspaceFileVideoPreview";
@@ -338,21 +337,11 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     props.route.params,
   );
   const revealedInspectorRef = useRef(false);
-  const fileTreeState = useWorkspaceFileTree({
-    cwd,
-    enabled: !fileInspector.supported,
+  const entriesQuery = useFileTreeEntries({
     environmentId,
-    selectedPath: null,
+    cwd: fileInspector.supported ? null : cwd,
+    searchQuery,
   });
-  const entrySearch = useWorkspaceEntrySearch({ cwd, environmentId, query: searchQuery });
-  const { revealDirectory } = fileTreeState;
-  const handleRevealDirectory = useCallback(
-    (path: string) => {
-      setSearchQuery("");
-      revealDirectory(path);
-    },
-    [revealDirectory],
-  );
   const handleReturnToThread = useCallback(() => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -504,7 +493,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
               {
                 accessibilityLabel: "Refresh files",
                 icon: "arrow.clockwise",
-                onPress: fileTreeState.refresh,
+                onPress: entriesQuery.refresh,
               },
             ]}
           />
@@ -560,21 +549,18 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
         </>
       )}
       <FileTreeBrowser
-        entries={fileTreeState.entries}
-        expandedPaths={fileTreeState.expandedPaths}
-        error={fileTreeState.error}
-        isPending={fileTreeState.isPending}
+        key={JSON.stringify([environmentId, cwd])}
+        entries={entriesQuery.entries}
+        loadedDirectories={entriesQuery.loadedDirectories}
+        onLoadDirectory={entriesQuery.loadDirectory}
+        error={entriesQuery.error}
+        isPending={entriesQuery.isPending}
         searchQuery={searchQuery}
-        searchEntries={entrySearch.entries}
-        searchError={entrySearch.error}
-        searchIsPending={entrySearch.isPending}
-        searchIndexStatus={entrySearch.indexStatus}
+        searchTruncated={entriesQuery.searchTruncated}
         selectedPath={null}
         onPreviewFile={handlePreviewFile}
-        onRefresh={fileTreeState.refresh}
-        onRevealDirectory={handleRevealDirectory}
+        onRefresh={entriesQuery.refresh}
         onSelectFile={handleSelectFile}
-        onToggleDirectory={fileTreeState.toggleDirectory}
       />
       <FilesToolbarBottomFade />
     </>
@@ -593,6 +579,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
   useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
   const { fileInspector, panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { appearance, setCodeWordBreak } = useAppearancePreferences();
   const iconColor = useUniwindTheme()["--color-icon"];
   const isAndroid = Platform.OS === "android";
   const params = props.route.params;
@@ -773,6 +760,16 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
             onPress: () => setModeOverride({ path: relativePath, mode: "source" }),
           } as const)
         : null,
+      // Only the source body wraps; a rendered preview lays itself out.
+      resolvedActiveMode === "source"
+        ? ({
+            id: "word-wrap",
+            title: appearance.codeWordBreak ? "Disable word wrap" : "Enable word wrap",
+            icon: "text.alignleft",
+            inline: false,
+            onPress: () => setCodeWordBreak(!appearance.codeWordBreak),
+          } as const)
+        : null,
       ...(mediaSource
         ? mediaActions.actions
             .filter(({ id }) => id !== "open-file")
@@ -793,6 +790,17 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
               onPress: () => copyTextWithHaptic(relativePath),
             } as const,
           ]),
+      // Selecting a long file by hand is painful on a phone, so copying the whole thing is
+      // the action most readers actually want. The attachment screen already offers it.
+      fileData?.contents != null
+        ? ({
+            id: "copy-contents",
+            title: fileData.truncated ? "Copy preview" : "Copy contents",
+            icon: "doc.on.doc",
+            inline: false,
+            onPress: () => copyTextWithHaptic(fileData.contents),
+          } as const)
+        : null,
       isPdfFile({ name: relativePath }) && previewUri !== null
         ? ({
             id: "open-pdf",
@@ -831,6 +839,8 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
         : null,
     ].filter((action) => action !== null);
   }, [
+    appearance.codeWordBreak,
+    setCodeWordBreak,
     assetPreviewUri,
     assetPreview.refresh,
     previewUri,
@@ -843,6 +853,8 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
     resolvedActiveMode,
     mediaSource,
     mediaActions.actions,
+    fileData?.contents,
+    fileData?.truncated,
   ]);
 
   const androidFileMenuActions = useMemo<MenuAction[]>(

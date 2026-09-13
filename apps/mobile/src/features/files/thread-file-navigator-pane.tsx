@@ -15,9 +15,8 @@ import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { FileTreeBrowser } from "./FileTreeBrowser";
+import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
-import { useWorkspaceEntrySearch } from "../../state/queries";
-import { useWorkspaceFileTree } from "./useWorkspaceFileTree";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 
 export function ThreadFileNavigatorPane(props: {
@@ -35,24 +34,11 @@ export function ThreadFileNavigatorPane(props: {
   const foregroundColor = theme["--color-foreground"];
   const sheetColor = theme["--color-sheet"];
   const headerScrollEdgeEffects = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
-  const fileTreeState = useWorkspaceFileTree({
-    cwd: props.cwd,
+  const entriesQuery = useFileTreeEntries({
     environmentId: props.environmentId,
-    selectedPath: props.selectedPath,
-  });
-  const entrySearch = useWorkspaceEntrySearch({
     cwd: props.cwd,
-    environmentId: props.environmentId,
-    query: searchQuery,
+    searchQuery,
   });
-  const { revealDirectory } = fileTreeState;
-  const handleRevealDirectory = useCallback(
-    (path: string) => {
-      setSearchQuery("");
-      revealDirectory(path);
-    },
-    [revealDirectory],
-  );
   const handlePreviewFile = useCallback(
     (relativePath: string) => {
       preloadWorkspaceFileContents({
@@ -71,7 +57,7 @@ export function ThreadFileNavigatorPane(props: {
           accessibilityLabel: "Refresh files",
           icon: { name: "arrow.clockwise", type: "sfSymbol" as const },
           identifier: "thread-file-navigator-refresh",
-          onPress: fileTreeState.refresh,
+          onPress: entriesQuery.refresh,
           sharesBackground: false,
           tintColor: foregroundColor,
           type: "button" as const,
@@ -88,26 +74,23 @@ export function ThreadFileNavigatorPane(props: {
           width: 44,
         },
       ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"],
-    [fileTreeState.refresh, foregroundColor, toggleAuxiliaryPane],
+    [entriesQuery.refresh, foregroundColor, toggleAuxiliaryPane],
   );
 
   const fileTree = (
     <FileTreeBrowser
-      entries={fileTreeState.entries}
-      expandedPaths={fileTreeState.expandedPaths}
-      error={fileTreeState.error}
-      isPending={fileTreeState.isPending}
+      key={JSON.stringify([props.environmentId, props.cwd])}
+      entries={entriesQuery.entries}
+      loadedDirectories={entriesQuery.loadedDirectories}
+      onLoadDirectory={entriesQuery.loadDirectory}
+      error={entriesQuery.error}
+      isPending={entriesQuery.isPending}
       searchQuery={searchQuery}
-      searchEntries={entrySearch.entries}
-      searchError={entrySearch.error}
-      searchIsPending={entrySearch.isPending}
-      searchIndexStatus={entrySearch.indexStatus}
+      searchTruncated={entriesQuery.searchTruncated}
       selectedPath={props.selectedPath}
       onPreviewFile={handlePreviewFile}
-      onRefresh={fileTreeState.refresh}
-      onRevealDirectory={handleRevealDirectory}
+      onRefresh={entriesQuery.refresh}
       onSelectFile={props.onSelectFile}
-      onToggleDirectory={fileTreeState.toggleDirectory}
     />
   );
 
@@ -180,7 +163,7 @@ export function ThreadFileNavigatorPane(props: {
             accessibilityLabel="Refresh files"
             hitSlop={8}
             className="h-8 w-8 items-center justify-center rounded-full active:bg-subtle"
-            onPress={fileTreeState.refresh}
+            onPress={entriesQuery.refresh}
           >
             <SymbolView
               name="arrow.clockwise"

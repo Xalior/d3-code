@@ -12,8 +12,6 @@ import type {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   ProjectEntry,
-  ProjectListDirectoryInput,
-  ProjectListDirectoryResult,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
   ProjectSearchContentsInput,
@@ -26,6 +24,7 @@ import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/p
 import { normalizeSearchQuery } from "@t3tools/shared/searchRanking";
 
 import { expandHomePathWith } from "../pathExpansion.ts";
+import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
 
@@ -76,31 +75,8 @@ export const WorkspaceEntriesBrowseError = Schema.Union([
 ]);
 export type WorkspaceEntriesBrowseError = typeof WorkspaceEntriesBrowseError.Type;
 
-export class WorkspaceEntriesListDirectoryFailedError extends Schema.TaggedError<WorkspaceEntriesListDirectoryFailedError>()(
-  "WorkspaceEntriesListDirectoryFailedError",
-  {
-    cwd: Schema.String,
-    relativePath: Schema.String,
-    absolutePath: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to read workspace directory '${this.absolutePath}' in '${this.cwd}'.`;
-  }
-}
-
-export const WorkspaceEntriesListDirectoryError = Schema.Union([
-  WorkspacePaths.WorkspaceRootNotExistsError,
-  WorkspacePaths.WorkspaceRootCreateFailedError,
-  WorkspacePaths.WorkspaceRootStatFailedError,
-  WorkspacePaths.WorkspaceRootNotDirectoryError,
-  WorkspacePaths.WorkspacePathOutsideRootError,
-  WorkspaceEntriesListDirectoryFailedError,
-]);
-export type WorkspaceEntriesListDirectoryError = typeof WorkspaceEntriesListDirectoryError.Type;
-
 export const WorkspaceEntriesError = Schema.Union([
+  WorkspaceEntriesReadDirectoryError,
   WorkspacePaths.WorkspaceRootNotExistsError,
   WorkspacePaths.WorkspaceRootCreateFailedError,
   WorkspacePaths.WorkspaceRootStatFailedError,
@@ -120,15 +96,6 @@ export class WorkspaceEntries extends Context.Service<
     readonly list: (
       input: ProjectListEntriesInput,
     ) => Effect.Effect<ProjectListEntriesResult, WorkspaceEntriesError>;
-    /**
-     * Reads the immediate children of one directory under the workspace root.
-     * Deliberately independent of the workspace search index: the file tree
-     * pages large workspaces in one directory at a time, so this must not wait
-     * on a whole-workspace scan.
-     */
-    readonly listDirectory: (
-      input: ProjectListDirectoryInput,
-    ) => Effect.Effect<ProjectListDirectoryResult, WorkspaceEntriesListDirectoryError>;
     readonly search: (
       input: ProjectSearchEntriesInput,
     ) => Effect.Effect<ProjectSearchEntriesResult, WorkspaceEntriesError>;
@@ -169,6 +136,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceSearchIndexes = yield* WorkspaceSearchIndex.WorkspaceSearchIndexMap;
+  const vcsProcess = yield* VcsProcess.VcsProcess;
 
   const normalizeWorkspaceRoot = Effect.fn("WorkspaceEntries.normalizeWorkspaceRoot")(function* (
     cwd: string,
@@ -189,6 +157,7 @@ export const make = Effect.gen(function* () {
         const recoverRefreshFailure = (
           cause:
             | WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed
+            | WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut
             | WorkspaceSearchIndex.WorkspaceSearchIndexRefreshFailed,
         ) =>
           Effect.gen(function* () {
@@ -199,19 +168,6 @@ export const make = Effect.gen(function* () {
             });
             yield* workspaceSearchIndexes.invalidate(indexKey);
           });
-        // A rescan still running when the budget ran out keeps its index: the
-        // scan continues in the background and searches answer from the part
-        // already read. Dropping the entry here would restart the scan from
-        // nothing on the next search, which is how a workspace too large to
-        // scan in one budget used to stay permanently unsearchable.
-        const noteUnfinishedRescan = (
-          cause: WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut,
-        ) =>
-          Effect.logInfo("Workspace search index rescan is still running", {
-            cwd,
-            variant,
-            timeout: cause.timeout,
-          });
         yield* Effect.gen(function* () {
           const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
           yield* searchIndex.refresh();
@@ -219,7 +175,7 @@ export const make = Effect.gen(function* () {
           Effect.provide(workspaceSearchIndexes.get(indexKey)),
           Effect.catchTags({
             WorkspaceSearchIndexCreateFailed: recoverRefreshFailure,
-            WorkspaceSearchIndexScanTimedOut: noteUnfinishedRescan,
+            WorkspaceSearchIndexScanTimedOut: recoverRefreshFailure,
             WorkspaceSearchIndexRefreshFailed: recoverRefreshFailure,
           }),
         );
@@ -314,6 +270,78 @@ export const make = Effect.gen(function* () {
   const list: WorkspaceEntries["Service"]["list"] = Effect.fn("WorkspaceEntries.list")(
     function* (input) {
       const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
+      if (input.directoryPath !== undefined) {
+        const directoryPath = input.directoryPath;
+        const toError = (cause: unknown) =>
+          new WorkspaceEntriesReadDirectoryError({
+            cwd: normalizedCwd,
+            partialPath: directoryPath,
+            parentPath: path.resolve(normalizedCwd, directoryPath),
+            cause,
+          });
+        const target =
+          directoryPath === ""
+            ? { absolutePath: normalizedCwd, relativePath: "" }
+            : yield* workspacePaths
+                .resolveRelativePathWithinRoot({
+                  workspaceRoot: normalizedCwd,
+                  relativePath: directoryPath,
+                })
+                .pipe(Effect.mapError(toError));
+        const entries = yield* Effect.tryPromise({
+          try: async () => {
+            const root = await NodeFSP.realpath(normalizedCwd);
+            const directory = await NodeFSP.realpath(target.absolutePath);
+            const relative = path.relative(root, directory);
+            if (
+              relative === ".." ||
+              relative.startsWith(`..${path.sep}`) ||
+              path.isAbsolute(relative) ||
+              relative.split(path.sep).includes(".git") ||
+              target.relativePath.split("/").includes(".git")
+            ) {
+              throw new Error("Directory must be inside the workspace and outside .git.");
+            }
+            const children = await NodeFSP.readdir(directory, { withFileTypes: true });
+            return children.flatMap((child): ProjectEntry[] => {
+              if (child.name === ".git" || (!child.isDirectory() && !child.isFile())) return [];
+              return [
+                {
+                  path: target.relativePath ? `${target.relativePath}/${child.name}` : child.name,
+                  kind: child.isDirectory() ? "directory" : "file",
+                },
+              ];
+            });
+          },
+          catch: toError,
+        });
+        // Use stdin so large directories cannot exceed the command-line argument limit.
+        // Ignore classification is optional in non-git workspaces or when git is unavailable.
+        const ignored = new Set<string>();
+        for (let offset = 0; offset < entries.length; offset += 1000) {
+          const chunk = entries.slice(offset, offset + 1000);
+          const result = yield* vcsProcess
+            .run({
+              operation: "WorkspaceEntries.list",
+              command: "git",
+              args: ["-c", "core.fsmonitor=false", "check-ignore", "-z", "--stdin"],
+              cwd: normalizedCwd,
+              stdin: `${chunk.map((entry) => entry.path).join("\0")}\0`,
+              allowNonZeroExit: true,
+              timeoutMs: 10_000,
+              maxOutputBytes: 16 * 1024 * 1024,
+            })
+            .pipe(Effect.orElseSucceed(() => undefined));
+          if (!result || (result.exitCode !== 0 && result.exitCode !== 1)) break;
+          for (const ignoredPath of result.stdout.split("\0")) ignored.add(ignoredPath);
+        }
+        return {
+          entries: entries.map((entry) =>
+            ignored.has(entry.path) ? { ...entry, ignored: true } : entry,
+          ),
+          truncated: false,
+        };
+      }
       return yield* Effect.gen(function* () {
         const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
         return yield* searchIndex.list();
@@ -327,89 +355,10 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  const listDirectory: WorkspaceEntries["Service"]["listDirectory"] = Effect.fn(
-    "WorkspaceEntries.listDirectory",
-  )(function* (input) {
-    // Resolved against the path service directly: the local wrapper carries the
-    // search index failures in its error channel, and this path never touches
-    // the index.
-    const normalizedCwd = yield* workspacePaths.normalizeWorkspaceRoot(input.cwd);
-    // The workspace root is addressed by an empty relative path, which
-    // resolveRelativePathWithinRoot rejects along with the traversal attempts
-    // it exists to catch, so the root is resolved here instead.
-    const target =
-      input.relativePath.length === 0
-        ? { absolutePath: normalizedCwd, relativePath: "" }
-        : yield* workspacePaths.resolveRelativePathWithinRoot({
-            workspaceRoot: normalizedCwd,
-            relativePath: input.relativePath,
-          });
-
-    const dirents = yield* Effect.tryPromise({
-      try: () => NodeFSP.readdir(target.absolutePath, { withFileTypes: true }),
-      catch: (cause) =>
-        new WorkspaceEntriesListDirectoryFailedError({
-          cwd: normalizedCwd,
-          relativePath: target.relativePath,
-          absolutePath: target.absolutePath,
-          cause,
-        }),
-    }).pipe(
-      // A directory the account may not read is an empty branch of the tree,
-      // not a failure that should blank the panel around it.
-      Effect.catchIf(
-        (error) => {
-          const code = (error.cause as NodeJS.ErrnoException | undefined)?.code;
-          return code === "EACCES" || code === "EPERM";
-        },
-        () => Effect.succeed([]),
-      ),
-    );
-
-    // readdir reports a symlink as a link rather than as whatever it points at,
-    // so a linked directory needs a follow to be browsable. Workspaces that
-    // share one directory across sibling checkouts are built out of these, and
-    // a tree that cannot open them hides most of the content.
-    //
-    // A link back to an ancestor makes a cycle the user can walk downwards.
-    // Reading one directory per expansion bounds the cost to what they open by
-    // hand, which is the same bound as a deep tree.
-    const entries: ProjectEntry[] = yield* Effect.forEach(
-      dirents,
-      (dirent) =>
-        Effect.gen(function* () {
-          const entryPath =
-            target.relativePath.length === 0
-              ? dirent.name
-              : `${target.relativePath}/${dirent.name}`;
-          if (dirent.isDirectory()) {
-            return { path: entryPath, kind: "directory" as const };
-          }
-          if (!dirent.isSymbolicLink()) {
-            return { path: entryPath, kind: "file" as const };
-          }
-          // A broken or unreadable link is a leaf: it has nothing to list, and
-          // failing the whole directory over one would blank the panel.
-          const linkedDirectory = yield* Effect.tryPromise(() =>
-            NodeFSP.stat(path.join(target.absolutePath, dirent.name)),
-          ).pipe(
-            Effect.map((stats) => stats.isDirectory()),
-            Effect.orElseSucceed(() => false),
-          );
-          return { path: entryPath, kind: linkedDirectory ? "directory" : "file" } as const;
-        }),
-      { concurrency: 16 },
-    );
-
-    return {
-      relativePath: target.relativePath,
-      entries: entries.toSorted((left, right) => left.path.localeCompare(right.path)),
-    };
-  });
-
-  return WorkspaceEntries.of({ browse, list, listDirectory, refresh, search, searchContents });
+  return WorkspaceEntries.of({ browse, list, refresh, search, searchContents });
 });
 
 export const layer = Layer.effect(WorkspaceEntries, make).pipe(
   Layer.provide(WorkspaceSearchIndex.WorkspaceSearchIndexMap.layer),
+  Layer.provide(VcsProcess.layer),
 );
