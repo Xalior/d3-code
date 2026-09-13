@@ -4,17 +4,10 @@ d3-code is a working fork of [T3 Code](https://github.com/pingdotgg/t3code). It 
 
 `main` is an unmodified mirror of upstream. `d3` carries our work and is the branch to build.
 
-## What this fork adds
-
-**Lazy file trees.** A new `projects.listDirectory` request reads a single directory, and the Files panel reads each directory as you expand it. On a workspace of about 1.1 million files a directory lists in under a millisecond, with no whole-workspace scan and no ceiling on how many files the tree can reach.
-
-**Symlinked directories open in the file tree.** A directory reached through a symbolic link is listed as a directory and can be expanded. Repositories that share one directory across sibling checkouts are built out of these links.
-
 ## Fixes carried here
 
 Each fix lives on its own branch and lists the upstream ticket or pull request it covers, so when one lands the fix can be dropped and the branch retired.
 
-- [t3code#4640](https://github.com/pingdotgg/t3code/issues/4640) - `fix/file-tree-large-workspaces` - Files panel reads one directory at a time through a new `projects.listDirectory` request rather than indexing the whole workspace, and opens symlinked directories. No upstream ticket covers the workspace scan timeout this also addresses.
 - [t3code#8129](https://github.com/pingdotgg/t3code/pull/8129) - `fix/file-tree-header-inset` - The mobile file tree no longer scrolls under the translucent header. The inset that compensates for the header was only calculated on iOS 26, so on earlier versions rows sat underneath it. Submitted upstream.
 - [t3code#8136](https://github.com/pingdotgg/t3code/pull/8136) - `fix/passkey-signing-requires-clerk` - A signed macOS build no longer demands a passkey provisioning profile when cloud features are switched off. Passkey sign-in serves T3 Connect, so with no Clerk key configured there is nothing for the entitlement to claim. Submitted upstream.
 
