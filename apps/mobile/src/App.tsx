@@ -22,6 +22,7 @@ import { RootStack } from "./Stack";
 import { appAtomRegistry } from "./state/atom-registry";
 import { OverlayPortalHost } from "./components/OverlayPortal";
 import { appBlurTargetRef } from "./lib/appBlurTarget";
+import { withD3Linking } from "./lib/d3Linking";
 import { useMobileNavigationTheme } from "./lib/useMobileNavigationTheme";
 
 import { SubscriptionUsageCoordinator } from "./widgets/SubscriptionUsageCoordinator";
@@ -37,15 +38,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 const appLinking = {
-  prefixes: [
-    Linking.createURL("/"),
-    "t3code://",
-    "t3code-dev://",
-    "t3code-preview://",
-    "d3code://",
-    "d3code-dev://",
-    "d3code-preview://",
-  ],
+  prefixes: [Linking.createURL("/"), "t3code://", "t3code-dev://", "t3code-preview://"],
   // Keep the compact thread list available beneath a directly opened thread.
   config: { initialRouteName: "Home" },
   // The Expo dev client launches the app via
@@ -105,7 +98,7 @@ function AppContent() {
             {/* Blur target for Android dropdown backdrops — see appBlurTarget.ts. */}
             <BlurTargetView ref={appBlurTargetRef} style={{ flex: 1 }}>
               <IncomingShareProvider>
-                <Navigation linking={appLinking} theme={navigationTheme} />
+                <Navigation linking={withD3Linking(appLinking)} theme={navigationTheme} />
               </IncomingShareProvider>
               <ConfirmDialogHost />
               <ThreadArrangementHost />
