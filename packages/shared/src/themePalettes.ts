@@ -8,20 +8,14 @@ export const BUILT_IN_THEME_IDS = [
 ] as const;
 
 /** The standard T3 Code palette, kept separate from the optional built-in theme library. */
-export const MOBILE_STANDARD_THEME_ID = "t3-code";
-
-/**
- * What a mobile install renders before anyone has chosen a theme. Written as a
- * literal because {@link D3_CODE_THEME} is declared further down this file.
- */
-export const MOBILE_DEFAULT_THEME_ID = "d3-code";
+export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
 /**
  * Every palette the mobile app can render. Declared here so host-side tooling
  * (the app-store screenshot harness) can validate a requested theme without
  * importing React Native application code.
  */
-export const MOBILE_THEME_IDS = [MOBILE_STANDARD_THEME_ID, ...BUILT_IN_THEME_IDS] as const;
+export const MOBILE_THEME_IDS = [MOBILE_DEFAULT_THEME_ID, ...BUILT_IN_THEME_IDS] as const;
 
 /**
  * Ids a theme may not take: the appearance keywords a stored preference uses,
@@ -897,12 +891,20 @@ export const IRIS_THEME: ThemeDefinition = {
 };
 
 /**
+ * The house theme, and what every client renders until someone chooses
+ * another. Upstream's default ids keep their own meaning: on mobile,
+ * {@link MOBILE_DEFAULT_THEME_ID} names the stock palette, so each client
+ * picks this id in the one place it decides a fresh install's theme.
+ */
+export const D3_CODE_THEME_ID = "d3-code" as const;
+
+/**
  * The house palette: T3 Chat's light mode paired with Iris's dark mode. Both
  * halves are taken by reference so the pair always matches the palettes it is
  * built from.
  */
 export const D3_CODE_THEME: ThemeDefinition = {
-  id: "d3-code",
+  id: D3_CODE_THEME_ID,
   label: "D3-code",
   appearance: "light",
   colors: T3_CHAT_THEME.colors,

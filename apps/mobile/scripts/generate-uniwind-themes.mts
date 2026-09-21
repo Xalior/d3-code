@@ -9,7 +9,7 @@ import {
   createMobileThemeVariables,
   getMobileThemeColors,
   getMobileThemeVariables,
-  STANDARD_MOBILE_THEME_ID,
+  DEFAULT_MOBILE_THEME_ID,
   type MobileThemeAppearance,
 } from "../src/lib/mobileTheme.ts";
 
@@ -161,7 +161,7 @@ const variablesFor = (themeId: BuiltInThemeId, appearance: MobileThemeAppearance
 const clerkColorsFor = (appearance: MobileThemeAppearance) => {
   // Native authentication uses plain cards, rather than tonal settings groups.
   const variables = createMobileThemeVariables(
-    getMobileThemeColors(STANDARD_MOBILE_THEME_ID, appearance),
+    getMobileThemeColors(DEFAULT_MOBILE_THEME_ID, appearance),
     appearance,
   );
   return {
@@ -205,7 +205,7 @@ export const renderUniwindThemesCSS = () => {
   const variants = [
     ...APPEARANCES.map((appearance) =>
       renderVariant(appearance, {
-        ...getMobileThemeVariables(STANDARD_MOBILE_THEME_ID, appearance),
+        ...getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, appearance),
         ...adaptiveVariablesFor(appearance),
         ...clerkVariablesFor(appearance),
       }),
@@ -232,7 +232,7 @@ export const renderDefaultThemeVariablesJSON = () =>
     Object.fromEntries(
       APPEARANCES.map((appearance) => [
         appearance,
-        getMobileThemeVariables(STANDARD_MOBILE_THEME_ID, appearance),
+        getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, appearance),
       ]),
     ),
     null,

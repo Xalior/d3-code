@@ -7,6 +7,7 @@ import {
   T3_CODE_DARK_THEME_COLORS,
   MOBILE_THEME_IDS,
   getThemeColorsForAppearance,
+  D3_CODE_THEME_ID,
 } from "@t3tools/shared/themePalettes";
 import { readDefaultMobileThemeVariables } from "./mobileTheme.test-support";
 import { getMobileThemeRuntimeVariables } from "./mobileThemeVariables";
@@ -16,7 +17,6 @@ import {
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
-  STANDARD_MOBILE_THEME_ID,
   flattenThemeColor,
   getMobileThemePreviewColors,
   getMobileThemeVariables,
@@ -86,7 +86,7 @@ describe("mobile themes", () => {
           ? T3_CODE_DARK_THEME_COLORS
           : T3_CODE_LIGHT_THEME_COLORS;
       const variables =
-        themeId === STANDARD_MOBILE_THEME_ID
+        themeId === DEFAULT_MOBILE_THEME_ID
           ? readDefaultMobileThemeVariables(appearance)
           : getMobileThemeVariables(themeId, appearance);
       expect(variables["--color-screen"]).toBe(themeColorToNativeColor(colors.canvas));
@@ -98,7 +98,7 @@ describe("mobile themes", () => {
       expect(variables["--color-card"]).toBe(themeColorToNativeColor(colors.surface));
       expect(variables["--color-composer-surface"]).toBe(
         themeColorWithAlpha(
-          themeId === STANDARD_MOBILE_THEME_ID
+          themeId === DEFAULT_MOBILE_THEME_ID
             ? variables["--color-grouped-card"]
             : themeColorToNativeColor(colors.surface),
           appearance === "dark" ? 0.9 : 0.94,
@@ -111,7 +111,7 @@ describe("mobile themes", () => {
         themeColorToNativeColor(colors.sidebarForeground),
       );
       expect(variables["--color-primary"]).toBe(themeColorToNativeColor(colors.messageAction));
-      if (themeId !== STANDARD_MOBILE_THEME_ID) {
+      if (themeId !== DEFAULT_MOBILE_THEME_ID) {
         expect(variables["--color-user-bubble"]).toBe(
           themeColorToNativeColor(colors.messageSurface),
         );
@@ -225,7 +225,7 @@ describe("mobile themes", () => {
   );
 
   it("uses the same preview roles and standard artwork as desktop", () => {
-    expect(getMobileThemePreviewColors(STANDARD_MOBILE_THEME_ID, "light")).toEqual({
+    expect(getMobileThemePreviewColors(DEFAULT_MOBILE_THEME_ID, "light")).toEqual({
       canvas: "#fcfcfc",
       accent: "#f4f4f5",
       messageAction: "#4f46e5",
@@ -240,7 +240,7 @@ describe("mobile themes", () => {
 
   it("normalizes persisted theme preferences", () => {
     expect(normalizeMobileThemeId("ocean")).toBe("ocean");
-    expect(normalizeMobileThemeId("missing-theme")).toBe(DEFAULT_MOBILE_THEME_ID);
+    expect(normalizeMobileThemeId("missing-theme")).toBe(D3_CODE_THEME_ID);
     expect(normalizeMobileThemeMode("dark")).toBe("dark");
     expect(normalizeMobileThemeMode("sepia")).toBe("system");
   });
@@ -254,7 +254,7 @@ describe("mobile themes", () => {
       resolveMobileThemeIds({ themeId: "grove", lightThemeId: "iris", darkThemeId: "ocean" }),
     ).toEqual({ light: "iris", dark: "ocean" });
     expect(resolveMobileThemeIds({ themeId: "grove", lightThemeId: "missing" })).toEqual({
-      light: DEFAULT_MOBILE_THEME_ID,
+      light: D3_CODE_THEME_ID,
       dark: "grove",
     });
   });

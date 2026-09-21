@@ -1,7 +1,7 @@
 import {
-  MOBILE_DEFAULT_THEME_ID,
   MOBILE_THEME_IDS,
   type MobileThemeId,
+  D3_CODE_THEME_ID,
 } from "@t3tools/shared/themePalettes";
 
 import { SHOWCASE_SCENES, type ShowcaseScene } from "./mobile-showcase-environment.ts";
@@ -13,7 +13,7 @@ export type ShowcaseAppearance = "light" | "dark";
 
 /** Every palette the mobile appearance settings can select. */
 export const SHOWCASE_THEMES = MOBILE_THEME_IDS;
-export const DEFAULT_SHOWCASE_THEME = MOBILE_DEFAULT_THEME_ID;
+export const DEFAULT_SHOWCASE_THEME = D3_CODE_THEME_ID;
 export type ShowcaseTheme = MobileThemeId;
 
 export interface ShowcaseStoreAssetSpec {

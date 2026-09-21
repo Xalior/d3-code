@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
-  STANDARD_MOBILE_THEME_ID,
+  DEFAULT_MOBILE_THEME_ID,
   getMobileThemeVariables,
   MOBILE_THEME_IDS,
   type MobileThemeAppearance,
@@ -92,7 +92,7 @@ function filesPatch(paths: ReadonlyArray<string>) {
 }
 
 function appTheme(themeId: MobileThemeId, appearance: MobileThemeAppearance) {
-  return themeId === STANDARD_MOBILE_THEME_ID || themeId === "material-you"
+  return themeId === DEFAULT_MOBILE_THEME_ID || themeId === "material-you"
     ? readDefaultMobileThemeVariables(appearance)
     : getMobileThemeVariables(themeId, appearance);
 }

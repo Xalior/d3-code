@@ -4,7 +4,6 @@ import "culori/css";
 import { converter, parse } from "culori/fn";
 import {
   BUILT_IN_THEMES,
-  D3_CODE_THEME,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -19,10 +18,13 @@ import {
   type ThemeColors,
   type ThemeDefinition,
   type ThemeVariants,
+  D3_CODE_THEME,
+  D3_CODE_THEME_ID,
 } from "@t3tools/shared/themePalettes";
 
 export {
   D3_CODE_THEME,
+  D3_CODE_THEME_ID,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -32,7 +34,6 @@ export {
 };
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
-export const D3_CODE_THEME_ID = "d3-code" as const;
 export const D3_CODE_THEME_LABEL = "D3-code";
 export const T3_CHAT_THEME_ID = "t3-chat" as const;
 const GROVE_THEME_ID = "grove" as const;
