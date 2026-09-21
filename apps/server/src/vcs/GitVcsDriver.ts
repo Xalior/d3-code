@@ -754,8 +754,6 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       return path.isAbsolute(gitCommonDir) ? gitCommonDir : path.resolve(cwd, gitCommonDir);
     });
 
-  const submodules = D3GitVcsSubmodules.make({ execute, fileSystem, path });
-
   // Git renames loose objects and refs into place without fsync by default, so
   // an unclean restart can leave 0-byte files under refs/t3/** that break every
   // later fetch and push. Checkpoint writes flush before they are published;
@@ -766,6 +764,8 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     "-c",
     "core.fsyncMethod=fsync",
   ] as const;
+
+  const submodules = D3GitVcsSubmodules.make({ execute, fileSystem, path, durableWrite });
 
   const checkpoints: VcsDriver.VcsCheckpointOps = {
     captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {

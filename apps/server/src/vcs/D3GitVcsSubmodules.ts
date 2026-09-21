@@ -56,6 +56,12 @@ export interface CheckpointSubmodulesDeps {
   readonly execute: VcsDriver.VcsDriver["Service"]["execute"];
   readonly fileSystem: FileSystem.FileSystem;
   readonly path: Path.Path;
+  /**
+   * The git config arguments the root driver puts in front of every command that
+   * writes a checkpoint, so its objects and refs reach the disk before they are
+   * published. Submodule checkpoints must not be less durable than the root's.
+   */
+  readonly durableWrite: ReadonlyArray<string>;
 }
 
 /**
@@ -73,7 +79,7 @@ function prefixNumstatPaths(numstat: string, prefix: string): string {
     .join("\0");
 }
 
-export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) => {
+export const make = ({ execute, fileSystem, path, durableWrite }: CheckpointSubmodulesDeps) => {
   const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
     execute({
       operation: "GitVcsDriver.checkpoints.resolveCheckpointCommit",
@@ -254,14 +260,14 @@ export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) =>
         yield* execute({
           operation,
           cwd,
-          args: ["add", "-A", "--", "."],
+          args: [...durableWrite, "add", "-A", "--", "."],
           env: commitEnv,
         });
 
         const writeTreeResult = yield* execute({
           operation,
           cwd,
-          args: ["write-tree"],
+          args: [...durableWrite, "write-tree"],
           env: commitEnv,
         });
         const treeOid = writeTreeResult.stdout.trim();
@@ -279,7 +285,7 @@ export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) =>
         const commitTreeResult = yield* execute({
           operation,
           cwd,
-          args: ["commit-tree", treeOid, "-m", message],
+          args: [...durableWrite, "commit-tree", treeOid, "-m", message],
           env: commitEnv,
         });
         const commitOid = commitTreeResult.stdout.trim();
@@ -296,7 +302,7 @@ export const make = ({ execute, fileSystem, path }: CheckpointSubmodulesDeps) =>
         yield* execute({
           operation,
           cwd,
-          args: ["update-ref", checkpointRef, commitOid],
+          args: [...durableWrite, "update-ref", checkpointRef, commitOid],
         });
       }).pipe(Effect.ensuring(cleanupTempIndex));
     },
