@@ -94,7 +94,7 @@ function EmptyMobileClients() {
       <EmptyHeader>
         <EmptyTitle>No mobile clients</EmptyTitle>
         <EmptyDescription>
-          Sign in to T3 Code on your iPhone to register it for push notifications and Live
+          Sign in to D3-code on your iPhone to register it for push notifications and Live
           Activities.
         </EmptyDescription>
       </EmptyHeader>
