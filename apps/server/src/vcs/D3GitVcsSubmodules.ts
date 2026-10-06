@@ -1,5 +1,4 @@
-import * as NodeCrypto from "node:crypto";
-
+import type * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import type * as Path from "effect/Path";
@@ -56,6 +55,7 @@ export interface CheckpointSubmodulesDeps {
   readonly execute: VcsDriver.VcsDriver["Service"]["execute"];
   readonly fileSystem: FileSystem.FileSystem;
   readonly path: Path.Path;
+  readonly crypto: Crypto.Crypto;
   /**
    * The git config arguments the root driver puts in front of every command that
    * writes a checkpoint, so its objects and refs reach the disk before they are
@@ -79,7 +79,13 @@ function prefixNumstatPaths(numstat: string, prefix: string): string {
     .join("\0");
 }
 
-export const make = ({ execute, fileSystem, path, durableWrite }: CheckpointSubmodulesDeps) => {
+export const make = ({
+  execute,
+  fileSystem,
+  path,
+  crypto,
+  durableWrite,
+}: CheckpointSubmodulesDeps) => {
   const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
     execute({
       operation: "GitVcsDriver.checkpoints.resolveCheckpointCommit",
@@ -229,10 +235,8 @@ export const make = ({ execute, fileSystem, path, durableWrite }: CheckpointSubm
     function* (cwd: string, checkpointRef: string) {
       const operation = "GitVcsDriver.checkpoints.captureCheckpoint";
       const gitCommonDir = yield* resolveGitCommonDir(cwd);
-      const tempIndexPath = path.join(
-        gitCommonDir,
-        `t3-checkpoint-index-${NodeCrypto.randomUUID()}`,
-      );
+      const indexId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+      const tempIndexPath = path.join(gitCommonDir, `t3-checkpoint-index-${indexId}`);
       const commitEnv: NodeJS.ProcessEnv = {
         ...process.env,
         GIT_INDEX_FILE: tempIndexPath,

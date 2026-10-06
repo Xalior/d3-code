@@ -808,7 +808,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     "core.fsyncMethod=fsync",
   ] as const;
 
-  const submodules = D3GitVcsSubmodules.make({ execute, fileSystem, path, durableWrite });
+  const submodules = D3GitVcsSubmodules.make({ execute, fileSystem, path, crypto, durableWrite });
 
   const checkpoints: VcsDriver.VcsCheckpointOps = {
     captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {

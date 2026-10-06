@@ -14,7 +14,7 @@ import * as VcsProcess from "./VcsProcess.ts";
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-git-vcs-contract-",
 });
-const GitContractLayer = Layer.mergeAll(GitVcsDriver.vcsLayer, GitVcsDriver.layer).pipe(
+const GitContractLayer = Layer.mergeAll(GitVcsDriver.layerVcs, GitVcsDriver.layer).pipe(
   Layer.provide(ServerConfigLayer),
   Layer.provideMerge(VcsProcess.layer),
   Layer.provideMerge(NodeServices.layer),
