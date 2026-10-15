@@ -225,12 +225,15 @@ export const make = ({ execute, durableWrite }: CheckpointSubmodulesDeps) =>
     const excludeArgs = (
       repoCwd: string,
       submoduleRepos: ReadonlyArray<CheckpointSubmoduleRepo>,
+      filePaths?: ReadonlyArray<string>,
     ): ReadonlyArray<string> => {
       const directChildren = submoduleRepos.filter((repo) => repo.parentCwd === repoCwd);
       if (directChildren.length === 0) {
         return [];
       }
-      return ["--", ".", ...directChildren.map((repo) => `:(exclude)${repo.relativePath}`)];
+      const excludes = directChildren.map((repo) => `:(exclude)${repo.relativePath}`);
+      // A caller that names its own files has already written the `--` and the paths.
+      return filePaths ? excludes : ["--", ".", ...excludes];
     };
 
     /**
@@ -249,7 +252,7 @@ export const make = ({ execute, durableWrite }: CheckpointSubmodulesDeps) =>
           "sparse.expectFilesOutsideOfPatterns=false",
         ];
         const gitCommonDir = yield* resolveGitCommonDir(cwd);
-        const indexId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+        const indexId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
         const tempIndexPath = path.join(gitCommonDir, `t3-checkpoint-index-${indexId}`);
         const commitEnv: NodeJS.ProcessEnv = {
           ...process.env,
