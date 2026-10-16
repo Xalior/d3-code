@@ -6,21 +6,14 @@
     {
       "layers": [
         {
-          "image-name": "Image 2.png",
-          "name": "Image 2"
-        }
-      ],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.5
-      },
-      "translucency": {
-        "enabled": true,
-        "value": 0.5
-      }
-    },
-    {
-      "layers": [
+          "glass": true,
+          "image-name": "text.svg",
+          "name": "Text",
+          "position": {
+            "scale": 8.5,
+            "translation-in-points": [0, 0]
+          }
+        },
         {
           "glass": false,
           "image-name": "cloud-lower-left.svg",

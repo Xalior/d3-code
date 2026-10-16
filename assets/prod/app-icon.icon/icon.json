@@ -6,8 +6,12 @@
     {
       "layers": [
         {
-          "image-name": "Image 2.png",
-          "name": "Image 2"
+          "image-name": "text.svg",
+          "name": "Text",
+          "position": {
+            "scale": 8.5,
+            "translation-in-points": [0, 0]
+          }
         }
       ],
       "shadow": {
