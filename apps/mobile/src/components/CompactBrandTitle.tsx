@@ -4,7 +4,7 @@ import type { NativeStackNavigationOptions } from "@react-navigation/native-stac
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "./ui/AppText";
-import { D3Mark } from "./D3Mark";
+import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
@@ -33,7 +33,7 @@ export function CompactBrandTitle(
       className="flex-row items-center gap-1.5"
       style={[{ marginLeft: titleOffset }, Platform.OS === "android" && { gap: 5.25 * scale }]}
     >
-      <D3Mark height={Math.round(20 * scale)} />
+      <T3Wordmark colorClassName="accent-icon" height={Math.round(15 * scale)} />
       <Text
         allowFontScaling={props.allowFontScaling}
         className="font-t3-medium text-foreground-muted"
