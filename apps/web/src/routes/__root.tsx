@@ -12,13 +12,14 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { Check, Copy } from "lucide";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
+import { AddProjectToMachineDialogHost } from "../components/AddProjectToMachineDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
@@ -36,6 +37,7 @@ import { ThreadNotificationCoordinator } from "../components/ThreadNotificationC
 import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
 import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
 import { PullRequestGuideRunCoordinator } from "../components/pullRequest/guide/PullRequestGuideRunCoordinator";
+import { HostFreezeToastCoordinator } from "../components/HostFreezeToastCoordinator";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ChatGptWelcomeCoordinator } from "../components/settings/ChatGptWelcomeCoordinator";
 import { ProviderAuthCallbackCoordinator } from "../components/settings/ProviderAuthCallbackCoordinator";
@@ -145,30 +147,18 @@ function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
-  const returningFromWelcomeRef = useRef(pathname === "/welcome");
+  // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
+  const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
+  if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
   const hostedPromptLinkLanding = useHostedPromptLinkLanding(
     authGateState.status === "hosted-static",
   );
-
-  useEffect(() => {
-    if (pathname === "/welcome") {
-      returningFromWelcomeRef.current = true;
-    }
-  }, [pathname]);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      syncBrowserChromeTheme();
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [pathname]);
 
   if (pathname === "/pair" || pathname === "/connect" || pathname === "/connect-agent") {
     return (
       <>
         <DocumentTitleSync />
+        <BrowserChromeThemeSync key={pathname} />
         <Outlet />
       </>
     );
@@ -180,6 +170,7 @@ function RootRouteView() {
     return (
       <>
         <DocumentTitleSync />
+        <BrowserChromeThemeSync key={pathname} />
         {hostedPromptLinkLanding}
       </>
     );
@@ -190,6 +181,7 @@ function RootRouteView() {
       <ToastProvider>
         <AnchoredToastProvider>
           <DocumentTitleSync />
+          <BrowserChromeThemeSync key={pathname} />
           <ContrastAppearanceSync />
           <EnvironmentThemeSync />
           <GlassAppearanceSync />
@@ -210,6 +202,7 @@ function RootRouteView() {
     return (
       <>
         <DocumentTitleSync />
+        <BrowserChromeThemeSync key={pathname} />
         <Outlet />
       </>
     );
@@ -227,6 +220,7 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <DocumentTitleSync />
+        <BrowserChromeThemeSync key={pathname} />
         <ContrastAppearanceSync />
         <EnvironmentThemeSync />
         <GlassAppearanceSync />
@@ -250,13 +244,15 @@ function RootRouteView() {
           <ConfirmDialogHost />
           <CustomSnoozeDialogHost />
           <SlowRpcRequestToastCoordinator />
+          <HostFreezeToastCoordinator />
           <PermissionUpdateNotice />
           {primaryEnvironmentAuthenticated ? <LegacyThreadMigrationToast /> : null}
           <ProjectCloneToastCoordinator />
+          <AddProjectToMachineDialogHost />
           <PullRequestGuideRunCoordinator />
           <HostedStaticEnvironmentBootstrap />
           {primaryEnvironmentAuthenticated ? (
-            <EventRouter skipInitialBootstrapNavigation={returningFromWelcomeRef.current} />
+            <EventRouter skipInitialBootstrapNavigation={returningFromWelcome} />
           ) : null}
           {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
           {isElectron ? <DesktopUpdateLaunchNotice /> : null}
@@ -346,6 +342,19 @@ function FontAppearanceSync() {
   return null;
 }
 
+/** Keyed by pathname: each route paints its own surface, which the browser chrome samples. */
+function BrowserChromeThemeSync() {
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      syncBrowserChromeTheme();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+  return null;
+}
+
 function DocumentTitleSync() {
   const primaryServerVersion =
     useAtomValue(primaryServerConfigAtom)?.environment.serverVersion ?? null;
@@ -396,7 +405,7 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
   const message = errorMessage(error);
   // Router pathname rather than window.location: desktop uses hash history, where the window path is always "/".
   const pathname = useLocation({ select: (location) => location.pathname });
-  const report = useMemo(() => errorReport(error, pathname), [error, pathname]);
+  const report = errorReport(error, pathname);
 
   return (
     <StandalonePage tone="error">
