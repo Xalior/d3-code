@@ -674,7 +674,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
       );
 
-      assert.isNull(local.publish);
+      assert.deepStrictEqual(local.publish, [
+        { provider: "github", owner: "Xalior", repo: "d3-code", releaseType: "release" },
+      ]);
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
