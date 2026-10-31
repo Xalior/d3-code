@@ -2687,15 +2687,8 @@ export function resolveDesktopRuntimeDependencies(
 }
 
 /**
- * Publish target for builds we serve ourselves.
- *
- * This fork does not put binaries on GitHub. They go to our own web root and the
- * app checks there, so the URL has to name the channel directory the feed sits
- * in: electron-updater appends `<channel>-mac.yml` to whatever it is given.
- *
- * Baked into every build and unchangeable afterwards, which is why it is set
- * rather than defaulted. An app shipped against a URL that does not answer can
- * never update itself, and no later build reaches the ones already installed.
+ * The URL names the channel directory: electron-updater appends `<channel>-mac.yml`.
+ * Builds cannot change it after shipping, so it is set, never defaulted.
  */
 export const resolveOwnServerPublishConfig = Effect.fn("resolveOwnServerPublishConfig")(function* (
   updateChannel: "latest" | "nightly",
@@ -3841,11 +3834,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
-  // Passkey sign-in needs an Associated Domains entitlement, which Apple grants
-  // through a provisioning profile naming a domain the signer controls. Without
-  // a profile configured the build signs without it rather than refusing: a
-  // signed build that cannot do passkeys is useful, and claiming a domain we do
-  // not own would fail at runtime anyway.
+  // Without a provisioning profile, sign without the passkey entitlement rather than refuse.
   const macPasskeyProfileConfigured =
     (loadRepoEnv({ repoRoot }).T3CODE_MACOS_PROVISIONING_PROFILE?.trim() ?? "").length > 0;
   const configuredMacPasskeySigning =
