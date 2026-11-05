@@ -1,6 +1,6 @@
 import * as NodeBuffer from "node:buffer";
 
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -12,27 +12,15 @@ import type * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
 /**
- * Submodule-aware checkpoints.
- *
- * A submodule keeps its files in its own repository, so a superproject checkpoint tree records
- * one gitlink commit for the whole of it. A turn that edits a file inside a submodule therefore
- * leaves no trace in the superproject diff at all, and a turn that commits inside one leaves a
- * `Subproject commit` line instead of the change. The operations here visit each submodule
- * working tree separately so both cases show the files themselves.
- *
- * `GitVcsDriver.ts` owns the workspace-level half of every checkpoint operation and calls into
- * this module afterwards. Nothing here replaces what that file does; it only reaches the
- * repositories that file never enters.
+ * Submodule-aware checkpoints. A superproject tree records one gitlink per submodule, so edits
+ * inside one are invisible to its diff. These operations visit each submodule working tree.
+ * `GitVcsDriver.ts` owns the workspace-level half and calls in here afterwards.
  */
 
 /**
- * How many levels of submodule a checkpoint follows.
- *
- * Every level costs a full `git add -A` in each repository it reaches, and a deeply nested
- * workspace makes that ruinous: one measured workspace holds 628 submodule working trees
- * five levels down, where following all of them turns a sub-second capture into minutes.
- * One level covers the submodules a workspace is normally edited through, and anything
- * deeper keeps the old behaviour: its gitlink commit is recorded, its files are not.
+ * How many levels of submodule a checkpoint follows. Each level costs a `git add -A` per
+ * repository, and deep nesting turns a sub-second capture into minutes. Deeper submodules
+ * record their gitlink commit only.
  */
 const CHECKPOINT_SUBMODULE_MAX_DEPTH = 1;
 
@@ -92,7 +80,7 @@ export const make = Effect.fn("D3GitVcsSubmodules.make")(function* ({
 }: CheckpointSubmodulesDeps) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const vcsProcess = yield* VcsProcess.VcsProcess;
 
   const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
@@ -255,7 +243,7 @@ export const make = Effect.fn("D3GitVcsSubmodules.make")(function* ({
         "sparse.expectFilesOutsideOfPatterns=false",
       ];
       const gitCommonDir = yield* resolveGitCommonDir(cwd);
-      const indexId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const indexId = yield* random.uuidV4().pipe(Effect.orDie);
       const tempIndexPath = path.join(gitCommonDir, `t3-checkpoint-index-${indexId}`);
       const commitEnv: NodeJS.ProcessEnv = {
         ...process.env,
