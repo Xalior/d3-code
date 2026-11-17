@@ -1007,7 +1007,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       : []),
   ] as const;
 
-  const submodules = yield* D3GitVcsSubmodules.make({ execute, durableWrite });
+  const submodules = yield* D3GitVcsSubmodules.make({ execute });
   // Checkpoints must handle existing paths beyond Windows MAX_PATH, even when
   // core.longpaths is disabled in the user's Git configuration.
   const longPaths = hostPlatform === "win32" ? ["-c", "core.longpaths=true"] : [];

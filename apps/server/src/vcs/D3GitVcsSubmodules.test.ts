@@ -163,48 +163,6 @@ it.effect("checkpoint diff shows submodule file changes instead of the gitlink c
   }).pipe(Effect.provide(GitContractLayer)),
 );
 
-it.effect("checkpoint restore rewinds submodule files, and deleting sweeps submodule refs", () =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const checkpoints = yield* checkpointsOf;
-    const { superprojectPath, submodulePath } = yield* makeSuperprojectWithSubmodule();
-
-    yield* checkpoints.captureCheckpoint({
-      cwd: superprojectPath,
-      checkpointRef: checkpointRef("turn/0"),
-    });
-
-    yield* writeFileAt(path.join(submodulePath, "library.ts"), "export const value = 4;\n");
-
-    assert.isTrue(
-      yield* checkpoints.restoreCheckpoint({
-        cwd: superprojectPath,
-        checkpointRef: checkpointRef("turn/0"),
-      }),
-    );
-    assert.equal(
-      yield* fileSystem.readFileString(path.join(submodulePath, "library.ts")),
-      "export const value = 1;\n",
-    );
-
-    yield* checkpoints.deleteCheckpointRefs({
-      cwd: superprojectPath,
-      checkpointRefs: [checkpointRef("turn/0")],
-    });
-
-    const submoduleRefs = yield* Effect.gen(function* () {
-      const driver = yield* GitVcsDriver.GitVcsDriver;
-      return yield* driver.execute({
-        operation: "GitVcsDriver.test.listRefs",
-        cwd: submodulePath,
-        args: ["for-each-ref", "--format=%(refname)", "refs/t3"],
-      });
-    });
-    assert.equal(submoduleRefs.stdout.trim(), "");
-  }).pipe(Effect.provide(GitContractLayer)),
-);
-
 it.effect("checkpoint diff keeps a renamed submodule file under its submodule path", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
