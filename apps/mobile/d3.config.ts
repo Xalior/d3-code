@@ -2,15 +2,10 @@ import type { ExpoConfig } from "expo/config";
 
 import { loadRepoEnv, readForkVersion } from "../../scripts/lib/public-config.ts";
 
-/**
- * The fork's mobile identity, applied to upstream's finished Expo config.
- *
- * Upstream's app.config.ts is left as upstream writes it and hands its result
- * here as the last thing it does. Everything that makes the app D3-code rather
- * than T3 Code is a rewrite of that result, keyed on the fields upstream already
- * exposes (`extra.appVariant`, `extra.iosPersonalTeamBuild`), so an upstream
- * edit inside app.config.ts merges on its own and the identity still lands.
- */
+// The fork's mobile identity, applied to upstream's finished Expo config. app.config.ts stays as
+// upstream writes it; everything that makes the app D3-code is a rewrite of its result, keyed on
+// fields upstream exposes (`extra.appVariant`, `extra.iosPersonalTeamBuild`), so upstream edits
+// there merge on their own.
 
 type AppVariant = "development" | "preview" | "production";
 
