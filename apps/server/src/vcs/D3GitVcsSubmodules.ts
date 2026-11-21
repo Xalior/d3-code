@@ -175,14 +175,15 @@ export const make = Effect.fn("D3GitVcsSubmodules.make")(function* ({
     repoCwd: string,
     submoduleRepos: ReadonlyArray<CheckpointSubmoduleRepo>,
     filePaths?: ReadonlyArray<string>,
+    upstreamExcludes?: ReadonlyArray<string>,
   ): ReadonlyArray<string> => {
     const directChildren = submoduleRepos.filter((repo) => repo.parentCwd === repoCwd);
     if (directChildren.length === 0) {
       return [];
     }
     const excludes = directChildren.map((repo) => `:(exclude)${repo.relativePath}`);
-    // A caller that names its own files has already written the `--` and the paths.
-    return filePaths ? excludes : ["--", ".", ...excludes];
+    // A caller that names its own files or excludes its own paths has already written the `--`.
+    return filePaths || (upstreamExcludes?.length ?? 0) > 0 ? excludes : ["--", ".", ...excludes];
   };
 
   /**
