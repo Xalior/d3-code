@@ -2,6 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import * as Option from "effect/Option";
 
 import { getPropertyName, unwrapExpression } from "../utils.ts";
+import { D3_PROPER_NOUNS } from "./d3ProperNouns.ts";
 
 const MESSAGE =
   "Untranslated copy. Wrap JSX text in <T>, props in gt(), and strings outside React in m(msg()). See docs/internals/i18n.md.";
@@ -191,6 +192,7 @@ const PROPER_NOUNS = [
   "Shift",
   "PageUp",
   "PageDown",
+  ...D3_PROPER_NOUNS,
 ];
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 const PROPER_NOUN_PATTERN = new RegExp(
