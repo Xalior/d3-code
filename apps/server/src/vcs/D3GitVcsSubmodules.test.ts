@@ -197,3 +197,38 @@ it.effect("checkpoint diff keeps a renamed submodule file under its submodule pa
     assert.include(diff, "diff --git a/vendor/library/renamed.ts b/vendor/library/renamed.ts");
   }).pipe(Effect.provide(GitContractLayer)),
 );
+
+it.effect("checkpoint diff leaves out excluded folders and still carries submodule changes", () =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const checkpoints = yield* checkpointsOf;
+    const { superprojectPath, submodulePath } = yield* makeSuperprojectWithSubmodule();
+    const excludePaths = ["nested"];
+
+    yield* writeFileAt(path.join(superprojectPath, "nested", "other.ts"), "export const n = 1;\n");
+    yield* checkpoints.captureCheckpoint({
+      cwd: superprojectPath,
+      checkpointRef: checkpointRef("turn/0"),
+    });
+
+    yield* writeFileAt(path.join(superprojectPath, "app.ts"), "export const app = 2;\n");
+    yield* writeFileAt(path.join(submodulePath, "library.ts"), "export const value = 2;\n");
+    yield* writeFileAt(path.join(superprojectPath, "nested", "other.ts"), "export const n = 2;\n");
+    yield* checkpoints.captureCheckpoint({
+      cwd: superprojectPath,
+      checkpointRef: checkpointRef("turn/1"),
+    });
+
+    const diff = yield* checkpoints.diffCheckpoints({
+      cwd: superprojectPath,
+      fromCheckpointRef: checkpointRef("turn/0"),
+      toCheckpointRef: checkpointRef("turn/1"),
+      ignoreWhitespace: false,
+      excludePaths,
+    });
+
+    assert.include(diff, "diff --git a/app.ts b/app.ts");
+    assert.include(diff, "diff --git a/vendor/library/library.ts b/vendor/library/library.ts");
+    assert.notInclude(diff, "nested/other.ts");
+  }).pipe(Effect.provide(GitContractLayer)),
+);
