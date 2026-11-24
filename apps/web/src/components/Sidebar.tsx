@@ -37,7 +37,7 @@ import {
   createInboxReturnTracker,
   isThreadWorking,
 } from "@t3tools/client-runtime/state/thread-inbox";
-import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
+import { activeThreadSortKey, sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   nextShownOrder,
   threadSearchMatchKey,
@@ -72,7 +72,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FolderIcon,
-  ListFilterIcon,
+  FolderPlusIcon,
   PlusIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -114,6 +114,7 @@ import {
   selectProjectGroupingSettings,
 } from "@t3tools/client-runtime/state/project-grouping";
 import {
+  buildSidebarProjectPickerEntries,
   projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKeys,
   getSidebarProjectSettingsKey,
@@ -135,7 +136,7 @@ import { useProjectPin } from "../hooks/useProjectGroupUpdate";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -187,6 +188,7 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
+  ADD_PROJECT_SCOPE_ITEM_VALUE,
   filterSidebarProjectScopeItems,
   firstValidTimestampMs,
   isSidebarNestedLinkClick,
@@ -271,7 +273,12 @@ import {
   type SidebarProviderEntry,
   type SidebarSweepAction,
 } from "./sidebar/SidebarThreadRow";
-import { SidebarDraftBlock, useSidebarDrafts } from "./sidebar/SidebarDraftBlock";
+import {
+  draftTerminalLabel,
+  SidebarDraftBlock,
+  useDraftTerminalLabels,
+  useSidebarDrafts,
+} from "./sidebar/SidebarDraftBlock";
 import {
   SidebarProjectFolderHeader,
   sidebarFolderRowId,
@@ -617,9 +624,12 @@ function useSidebarThreads(input: {
     pinnedKeysById: new Map(
       threads.map((thread) => [threadShellKey(thread), thread.pinOrderKey ?? null] as const),
     ),
-    activeKeysById: new Map(
-      threads.map((thread) => [threadShellKey(thread), thread.activeOrderKey ?? null] as const),
-    ),
+    activeKeysById: new Map([
+      ...threads.map((thread) => [threadShellKey(thread), thread.activeOrderKey ?? null] as const),
+      ...activeThreads.map(
+        (thread) => [threadShellKey(thread), activeThreadSortKey(thread)] as const,
+      ),
+    ]),
   };
 }
 
@@ -838,6 +848,7 @@ function useSidebarLookups() {
     projectGroups.map((project) => [project.projectKey, project] as const),
   );
   const projectScopeItems = [
+    { value: ADD_PROJECT_SCOPE_ITEM_VALUE, label: gt("Add project") },
     { value: "all", label: gt("All projects") },
     ...pickableProjectGroups(projectGroups).map((project) => ({
       value: project.projectKey,
@@ -1181,7 +1192,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     projectScopeKeys.length > 1
       ? null
       : (projectScopeItems.find((item) => item.value === (projectScopeKeys[0] ?? "all")) ??
-        projectScopeItems[0]!);
+        projectScopeItems.find((item) => item.value === "all")!);
   const filteredProjectScopeItems = filterSidebarProjectScopeItems({
     items: projectScopeItems,
     query: projectScopeMenuState.query,
@@ -1199,13 +1210,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
   );
   const routeDraftIdForRows = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
+  const draftTerminalLabels = useDraftTerminalLabels();
   const visibleDraftSessionCount = useComposerDraftStore((store) => {
     let count = 0;
     for (const [draftKey, session] of Object.entries(store.draftThreadsByThreadKey)) {
       if (session.promotedTo != null) {
         continue;
       }
-      if (!composerDraftHasUserContent(store.draftsByThreadKey[draftKey])) {
+      if (
+        draftTerminalLabel(session, draftTerminalLabels) === null &&
+        !composerDraftHasUserContent(store.draftsByThreadKey[draftKey])
+      ) {
         continue;
       }
       if (
@@ -1256,7 +1271,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const startThreadInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
     if (isMobile) setOpenMobile(false);
-    void handleNewThread(scopeProjectRef(group.environmentId, group.id));
+    const [entry] = buildSidebarProjectPickerEntries({
+      groups: [group],
+      preferredProjectRef: resolveThreadActionProjectRef({
+        ...newThreadContext,
+        activeThread: newThreadContext.activeThread ?? undefined,
+      }),
+    });
+    const target = entry?.targetProject ?? group;
+    void handleNewThread(scopeProjectRef(target.environmentId, target.id));
   });
   const handleProjectFolderContextMenu = useStableCallback(
     (
@@ -1440,7 +1463,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const settledThreadKeysRef = useRef(settledThreadKeys);
   const snoozedThreadKeysRef = useRef(snoozedThreadKeys);
 
-  const { draftIds, routeDraftComposer } = useSidebarDrafts(scopedProjectKeys, routeDraftIdForRows);
+  const { draftIds, routeDraftComposer } = useSidebarDrafts(
+    scopedProjectKeys,
+    routeDraftIdForRows,
+    draftTerminalLabels,
+  );
   // Draft rows sit above the threads, so jumps and traversal reach them first.
   // Search hides them, so they drop out while it is open.
   const listedDraftIds = isSearchingThreads ? EMPTY_DRAFT_IDS : draftIds;
@@ -1597,7 +1624,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       rangeSelectTo(threadKey, orderedThreadKeysRef.current);
       return;
     }
-    if (isTrailingDoubleClick(event.detail)) {
+    // macOS keeps counting quick clicks across rows, so only the open row's trailing click is a double-click.
+    if (isTrailingDoubleClick(event.detail) && routeThreadKey === threadKey) {
       return;
     }
     navigateToThread(threadRef);
@@ -2171,7 +2199,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         plan.kind === "settle" ||
         (plan.kind === "move-active" && plan.unsnooze),
       order: plan.kind === "settle" ? null : plan.order,
-      keysAtDrop: target.section === "active" ? activeKeysById : pinnedKeysById,
+      // Stored keys, not sort keys: an unpinned row gaining its implied key is not a foreign write.
+      keysAtDrop:
+        target.section === "active"
+          ? new Map([...threadByKey].map(([key, thread]) => [key, thread.activeOrderKey ?? null]))
+          : pinnedKeysById,
       assignedKeys: new Map(assignments.map(({ id, orderKey }) => [id, orderKey])),
     };
     setOptimisticDrop(drop);
@@ -2698,6 +2730,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
               isRunning: !threadRuntimeCanArchive(thread.runtime),
+              hasCompletedRun: thread.latestRun?.completedAt != null,
               canShareWithGuest: appAtomRegistry.get(
                 canShareWithGuestAtom(threadRef.environmentId),
               ),
@@ -3068,7 +3101,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       return;
                     }
                     if (!item) return;
-                    if (item.value === "all") {
+                    if (item.value === ADD_PROJECT_SCOPE_ITEM_VALUE) {
+                      dispatchProjectScopeMenu({ type: "open-changed", open: false });
+                      openAddProjectCommandPalette();
+                    } else if (item.value === "all") {
                       setProjectScopeKeys([]);
                     } else if (
                       eventDetails.event instanceof MouseEvent &&
@@ -3087,12 +3123,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       <SidebarHeaderIconButton
                         label={
                           scopedProjectGroups.length > 0
-                            ? gt("Filter threads by project: {projects}", {
+                            ? gt("Projects: {projects}", {
                                 projects: scopedProjectGroups
                                   .map((project) => project.displayName)
                                   .join(", "),
                               })
-                            : gt("Filter threads by project")
+                            : gt("Projects")
                         }
                       />
                     }
@@ -3117,7 +3153,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         <ProjectFavicon project={scopedProjectGroups[0]} className="size-4" />
                       </span>
                     ) : (
-                      <ListFilterIcon className="size-4" />
+                      <FolderIcon className="size-4" />
                     )}
                   </ComboboxTrigger>
                   {/* Refocusing the trigger after a pointer close shows its focus ring and opens its tooltip. */}
@@ -3179,6 +3215,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     </ComboboxEmpty>
                     <ComboboxList aria-multiselectable>
                       {(item: (typeof projectScopeItems)[number]) => {
+                        if (item.value === ADD_PROJECT_SCOPE_ITEM_VALUE) {
+                          return (
+                            <ComboboxItem key={item.value} hideIndicator value={item}>
+                              <FolderPlusIcon className="size-4 shrink-0" />
+                              <span className="min-w-0 truncate text-sm">{item.label}</span>
+                              {/* Keeps "Add project" as tall as the project rows. */}
+                              <span className="ml-auto size-7 shrink-0 sm:size-6" />
+                            </ComboboxItem>
+                          );
+                        }
                         const project = projectGroupByScopeKey.get(item.value) ?? null;
                         const isSelected = project
                           ? projectScopeKeys.includes(item.value)
@@ -3254,7 +3300,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   </ComboboxPopup>
                 </Combobox>
               }
-              onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
@@ -3576,6 +3621,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           key="draft-sessions"
                           draftIds={draftIds}
                           routeDraftComposer={routeDraftComposer}
+                          terminalLabels={draftTerminalLabels}
                           jumpLabelByDraftId={draftJumpLabelById}
                           projectByKey={projectByKey}
                           projectDisplayNameByKey={projectDisplayNameByKey}
